@@ -43,6 +43,12 @@ BUCKET_HOURS = {"am": 5.0, "pm": 7.0, "night": 12.0}
 
 GEOM_TOLERANCE_M = 10.0   # Douglas-Peucker tolerance for shipped shape points
 
+# How far from a named street a sidewalk can sit and still be called by its
+# name, and how far off parallel it may run. A sidewalk is typically 8 to 15 m
+# from the centreline; 25 m catches wide arterials without jumping a block.
+SIDEWALK_SNAP_M = 25.0
+SIDEWALK_PARALLEL_DEG = 35.0
+
 # Walking an eight-lane arterial is worse than a residential street even at
 # identical crime counts: more conflict points, worse sightlines, more noise.
 ROADTYPE_PENALTY = {
@@ -152,6 +158,9 @@ def build_edges():
         hw = tags.get("highway", "residential")
         if tags.get("service") == "alley":
             hw = "alley"
+        # Street names let the app say "avoids Venice Boulevard" instead of
+        # drawing a line and leaving the reader to work out what it means.
+        name = (tags.get("name") or "").strip()
         cut = [0]
         for i in range(1, len(nds) - 1):
             if ref_count[nds[i]] > 1:
@@ -163,13 +172,13 @@ def build_edges():
             chain = nds[a:b + 1]
             if chain[0] == chain[-1]:
                 continue
-            edges.append((chain[0], chain[-1], chain, hw))
+            edges.append((chain[0], chain[-1], chain, hw, name))
     return nodes, edges
 
 
 def largest_component(edges):
     adj = defaultdict(list)
-    for u, v, _, _ in edges:
+    for u, v, *_ in edges:
         adj[u].append(v)
         adj[v].append(u)
     seen, best = set(), []
@@ -203,7 +212,7 @@ def edge_geometry(nodes, edges):
     offsets = np.zeros(n + 1, dtype=np.int64)
     sx_parts, sy_parts, geoms = [], [], []
 
-    for i, (u, v, chain, hw) in enumerate(edges):
+    for i, (u, v, chain, hw, _name) in enumerate(edges):
         pts = np.array([nodes[k] for k in chain], dtype=np.float64)
         xs, ys = geo.to_xy(pts[:, 0], pts[:, 1])
         sx, sy, total = geo.densify(np.asarray(xs), np.asarray(ys),
@@ -357,6 +366,64 @@ def main():
     for k, b in enumerate(BUCKET_ORDER):
         er[:, k] = np.round(risk[b] * 255).astype(np.uint8)
 
+    # Street names, deduplicated into a table so each edge carries a 2-byte id
+    # instead of a repeated string. NO_NAME marks footpaths and service roads,
+    # which OSM mostly leaves unnamed.
+    NO_NAME = 0xFFFF
+    name_ids, name_list = {}, []
+    ename = np.full(len(edges), NO_NAME, dtype=np.uint16)
+    for i, e in enumerate(edges):
+        nm = e[4]
+        if not nm:
+            continue
+        k = name_ids.get(nm)
+        if k is None:
+            k = len(name_list)
+            if k >= NO_NAME:        # 65,534 names is far beyond any city
+                continue
+            name_ids[nm] = k
+            name_list.append(nm)
+        ename[i] = k
+    print(f"  street names: {len(name_list):,} unique, "
+          f"{int((ename != NO_NAME).sum()):,} of {len(edges):,} blocks named "
+          f"directly", flush=True)
+
+    # OSM maps most Los Angeles sidewalks as separate unnamed footways, so a
+    # walking route spends much of its length on ways with no name and the
+    # directions read "unnamed path" for whole kilometres. Give each unnamed
+    # block the name of the nearest named block running roughly parallel to it,
+    # which is what a person means when they say they walked down Venice.
+    ends = np.array([[nodes[e[0]][0], nodes[e[0]][1],
+                      nodes[e[1]][0], nodes[e[1]][1]] for e in edges])
+    ax, ay = geo.to_xy(ends[:, 0], ends[:, 1])
+    bx, by = geo.to_xy(ends[:, 2], ends[:, 3])
+    mid = np.column_stack([(ax + bx) / 2, (ay + by) / 2])
+    bearing = np.degrees(np.arctan2(by - ay, bx - ax)) % 180.0
+
+    have = ename != NO_NAME
+    lack = ~have
+    if have.any() and lack.any():
+        from scipy.spatial import cKDTree
+        tree = cKDTree(mid[have])
+        have_idx = np.flatnonzero(have)
+        cand = tree.query_ball_point(mid[lack], SIDEWALK_SNAP_M)
+        inherited = 0
+        for slot, hits in zip(np.flatnonzero(lack), cand):
+            if not hits:
+                continue
+            hs = have_idx[np.asarray(hits)]
+            db = np.abs(bearing[hs] - bearing[slot])
+            db = np.minimum(db, 180.0 - db)          # parallel either way round
+            ok = db <= SIDEWALK_PARALLEL_DEG
+            if not ok.any():
+                continue
+            hs = hs[ok]
+            d = np.hypot(mid[hs, 0] - mid[slot, 0], mid[hs, 1] - mid[slot, 1])
+            ename[slot] = ename[hs[int(d.argmin())]]
+            inherited += 1
+        print(f"  sidewalks matched to a street: {inherited:,} "
+              f"(now {int((ename != NO_NAME).sum()):,} named)", flush=True)
+
     print("simplifying geometry...", flush=True)
     geom_off = np.zeros(len(edges) + 1, dtype=np.uint32)
     geom_parts = []
@@ -384,17 +451,19 @@ def main():
     # from the header alone.
     with open(path, "wb") as f:
         header = np.array([0x53525453,            # "SRTS"
-                           1,                      # format version
+                           2,                      # format version
                            len(sorted_keep),
                            len(edges),
-                           len(geom_pts)], dtype=np.uint32)
-        f.write(header.tobytes())      # 20 bytes
+                           len(geom_pts),
+                           len(name_list)], dtype=np.uint32)
+        f.write(header.tobytes())      # 24 bytes, still 4-byte aligned
         f.write(node_ll.tobytes())     # int32  nNodes * 2
         f.write(eu.tobytes())          # int32  nEdges
         f.write(ev.tobytes())          # int32  nEdges
         f.write(geom_off.tobytes())    # uint32 nEdges + 1
         f.write(geom_pts.tobytes())    # int32  nGeom * 2
         f.write(ed.tobytes())          # uint16 nEdges
+        f.write(ename.tobytes())       # uint16 nEdges
         f.write(er.tobytes())          # uint8  nEdges * 3
 
     meta = {
@@ -407,11 +476,15 @@ def main():
         "lights": 0 if lights is None else int(len(lights[0])),
         "bandwidth_m": C.KERNEL_BANDWIDTH_M,
         "km": round(float(lengths.sum() / 1000), 1),
-        "schools": None,
+        "names": len(name_list),
         "bbox": C.BBOX,
     }
     with open(os.path.join(C.OUT, "graph_meta.json"), "w") as f:
         json.dump(meta, f, indent=1)
+
+    with open(os.path.join(C.OUT, "street_names.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(name_list, f, ensure_ascii=False, separators=(",", ":"))
 
     # Ship a pre-gzipped copy too: the browser inflates it with
     # DecompressionStream, so the transfer is ~5 MB instead of ~10 MB whether

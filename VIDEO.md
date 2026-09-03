@@ -1,132 +1,191 @@
-# Video script — ~2:45
+# Presentation script for Adrian and Michael
 
-The rubric wants purpose, impact, functionality, **and a live demonstration**.
-Record the demo in one unbroken take if you can; judges notice when a demo is
-real. Screen-record at 1920×1080 with the sidebar visible.
+Two speakers, about 3 minutes. Every rubric category is covered and marked in
+the margin so you can check nothing is missing before you upload.
 
-Before recording: open <https://adrianerlikhman.is-a.dev/safe-routes-to-school/>
-and let the graph finish loading, then reload once so it's warm and the
-progress bar is quick.
+Rubric coverage: creativity (25), complexity (15), potential impact (20),
+feasibility (10), user interface (20), presentation (10).
 
-If you have opened the site before, **hard-refresh** (Ctrl+Shift+R) first —
-otherwise the browser may run a cached `app.js` from an earlier version.
+## Before you record
 
----
+Open https://safe-routes-la.github.io and let the graph load, then hard refresh
+with Ctrl+Shift+R so you are not running a cached version. Record at 1920x1080
+with the sidebar visible. One take if you can manage it.
 
-## 0:00 — 0:25 · The number
+Set up two trips in advance so you are not typing during the demo:
 
-> "Between 2020 and 2024, one thousand and twenty-six kids between the ages of
-> ten and eighteen were robbed on the streets of Los Angeles during school
-> commute hours. That's fifty-six percent of every robbery of a kid in that age
-> range — more than half — packed into about five hours of the day.
->
-> Those five hours are the walk to school, and the walk home."
+- Trip A, walking: a school with a start point about 1.5 km away.
+- Trip B, transit: something 8 km or more out, for example a start near
+  Normandie and Exposition going to LACES. That is where the bus wins by a mile.
 
-**On screen:** the "Why it matters" tab, with `1,026` filling the panel.
-
-Say it plainly and stop. Don't oversell — the number does the work.
+Whoever is not speaking should stay silent rather than adding "yeah" or "right".
+Hand off cleanly on the marked lines.
 
 ---
 
-## 0:25 — 0:50 · Why nobody solves this
+## 0:00 to 0:25, the problem
+**Adrian** / on screen: the Method tab, 1,026 filling the panel
 
-> "Every map app in the world will give that kid the *shortest* way to school.
-> None of them will give them the *safest* one.
+> Between 2020 and 2024, one thousand and twenty-six kids between ten and
+> eighteen were robbed on the streets of Los Angeles during school commute
+> hours. That is fifty-six percent of every robbery of a kid that age, inside
+> about five hours of the day.
 >
-> The federal Safe Routes to School program has existed since 1971, and it's
-> almost entirely about cars — crosswalks, speed bumps, crossing guards. But
-> ask an LA teenager what they're actually afraid of on the walk home, and they
-> won't say traffic."
+> Those five hours are the walk to school and the walk home. My friends are in
+> that number. That is why we built this.
 
-**On screen:** scroll the "Why it matters" tab through the SDG list.
+Stop there. Do not oversell it.
 
 ---
 
-## 0:50 — 1:50 · The demo (the part that matters most)
+## 0:25 to 0:45, why nobody has fixed it
+**Michael**
 
-Pick a school with a genuinely bad surrounding area so the contrast is visible.
-Do this live:
-
-1. Type a school name — let the autocomplete fill in.
-2. Click a starting point about a kilometre away.
-3. Both routes appear instantly.
-
-> "Green is the safest route. The dotted amber line is the shortest one — what
-> your phone would have told you.
+> Every map app will give that kid the shortest way to school. Not one of them
+> will give them the safest way.
 >
-> Here, walking three minutes longer cuts exposure to violent street crime by
-> half. The worst block on the shortest route scores 0.65 out of 1. On the safe
-> route, 0.28."
+> The federal Safe Routes to School program has existed since 1971, and it is
+> almost entirely about cars. Crosswalks, speed bumps, crossing guards. Ask an
+> LA teenager what actually scares them walking home and they will not say
+> traffic.
 
-4. **Switch the time of day to "After dark."** The routes change.
-
-> "This is the part I'm most proud of. Risk isn't a property of a place — it's a
-> property of a place *at an hour*. The safest way home at six in the evening
-> is not the safest way at eight in the morning. Seventy-eight thousand blocks
-> in this model change meaningfully between morning and night."
-
-5. **Drag the detour slider** from "shortest" to "safest."
-
-> "And there's no single right answer, so the tool doesn't pretend there is.
-> You decide how much detour is worth it."
-
-6. Zoom out to show the heatmap over the whole city.
-
-> "That's every block in central Los Angeles, scored — four hundred and
-> thirty-one thousand of them."
+*(covers: potential impact, the prompt)*
 
 ---
 
-## 1:50 — 2:25 · How it works
+## 0:45 to 1:35, the walking demo
+**Adrian** / do this live, trip A
 
-> "This runs on 85,634 real violent-crime incidents from the LAPD open data
-> portal, 128,534 streetlights from the Bureau of Street Lighting, and the
-> entire walkable street network of central LA.
->
-> The filtering mattered more than the modelling. Out of about a million raw
-> records, I kept only crimes that threaten someone *walking down a street*,
-> and only the ones that happened in public space — that last filter alone
-> drops eighty-one thousand indoor incidents. Domestic violence is real and
-> serious, but it isn't a walking-route hazard, and leaving it in would have
-> labelled ordinary residential neighbourhoods as dangerous to walk through.
->
-> Crimes against children count triple, because a crime against a thirteen-
-> year-old predicts danger to a thirteen-year-old better than a crime against
-> an adult does.
->
-> The routing is A-star, minimising length times one plus lambda times risk to
-> the one-point-five. Because every edge multiplier is at least one,
-> straight-line distance never overestimates the remaining cost — so the
-> heuristic is admissible and the route is *provably* optimal, not just
-> plausible. I verify that against Dijkstra in the repo."
+> Pick a school. Type an address, no dropping pins on a map you do not
+> recognise. And it gives me three routes instead of one, because there is no
+> single right answer about how much detour is worth it.
 
-**On screen:** the "How it works" tab, then cut briefly to `validate.py`
-output showing `MATCH ... -> PASS`.
+Click through the three cards so the map line changes.
+
+> Then it explains itself, which is the part I care about. It does not just draw
+> a green line. It says: skips five hundred and fifty metres of South Fairfax
+> Avenue, which scores sixty-five at this hour, goes along Venice Boulevard
+> instead at twenty, costs you three minutes, and total exposure drops fifty
+> percent.
+>
+> That is an argument you can check, not a suggestion you have to trust.
+
+Scroll to the hour comparison.
+
+> Same path at every hour of the day, because risk is not a property of a place
+> on its own. It is a property of a place at an hour.
+
+Open the street by street list.
+
+> And it names every street, so you can actually follow it while you walk.
+
+*(covers: user interface, creativity)*
 
 ---
 
-## 2:25 — 2:45 · Scale, and close
+## 1:35 to 2:10, the transit demo
+**Michael** / switch to Bus or rail, trip B
 
-> "There's no backend. The graph is precomputed and the router runs in your
-> browser, so this deploys as static files and costs nothing to host — which
-> means any city can run its own copy for free.
+> Walking is not always the answer, so we added buses and rail from LA Metro's
+> published schedule data.
 >
-> And nothing here is specific to Los Angeles except one bounding box in a
-> config file. Chicago, New York, Seattle, Toronto, London — they all publish
-> the same kind of open incident data. Pointing this at any of them is a
-> configuration change, not a rewrite.
+> This is the interesting part. Minutes you spend on a bus are minutes you are
+> not on the street at all. So for this trip, walking takes a hundred and
+> eighteen minutes and covers nine kilometres of sidewalk. Route 206 changing to
+> Route 33 takes forty minutes, and only seven hundred and fifty metres of it
+> happens on foot. Exposure drops eighty percent.
+>
+> Faster and safer, which almost never happens.
+
+Point at the wait figure.
+
+> And we are honest about waiting. Standing at a stop is exposure without
+> progress, so a minute of waiting is charged like eighty metres of walking on
+> that block. A stop on a bad corner is not a safe place to spend eight minutes,
+> and the model should not pretend it is.
+
+*(covers: creativity, complexity, the prompt)*
+
+---
+
+## 2:10 to 2:30, the school report
+**Adrian** / School tab, run the report
+
+> One route only helps one student. So this scores all sixteen directions a
+> student might walk in from.
+>
+> Approaching this school from the south southeast means two and a half times
+> the exposure of coming in from the east northeast. That is a sentence a
+> principal can act on. It tells them where to put the crossing guard.
+
+*(covers: potential impact, feasibility)*
+
+---
+
+## 2:30 to 2:50, how it works
+**Michael** / Method tab, then a quick cut to validate.py showing PASS
+
+> Underneath this is eighty-five thousand real violent crime records, a hundred
+> and twenty-eight thousand streetlights, five thousand transit stops, and four
+> hundred and thirty-one thousand blocks of Los Angeles, every one scored.
+>
+> The filtering mattered more than the maths. Out of about a million records we
+> keep only crimes that threaten someone walking, and only the ones in public
+> space. That drops eighty-one thousand indoor incidents. Domestic violence is
+> serious, and it is also not a hazard of walking past a building. Leaving it in
+> would have labelled ordinary residential neighbourhoods as dangerous, and that
+> does real harm to the neighbourhoods we are trying to help.
+>
+> Crimes against children count triple, because a crime against a thirteen year
+> old tells you more about the risk to a thirteen year old.
+>
+> The routing is A-star. Because every block multiplier is at least one,
+> straight line distance never overestimates the remaining cost, so the
+> heuristic is admissible and the route is provably the cheapest one rather than
+> a good guess. We check that against Dijkstra and the costs come out identical.
+
+*(covers: complexity)*
+
+---
+
+## 2:50 to 3:05, scale and close
+**Adrian**
+
+> There is no server. The whole thing runs in your browser, so it deploys as
+> static files and costs nothing to host. Any city can run its own copy for
+> free.
+>
+> And one bounding box in a config file is the only Los Angeles specific thing
+> in it. Chicago, New York, Seattle, Toronto, London all publish the same kind
+> of open data. Pointing this somewhere else is configuration, not a rewrite.
+>
+> It touches four UN development goals: safe cities, quality education, ending
+> violence against children, and reduced inequality, because the kids carrying
+> this risk are the ones without a car or a ride.
 >
 > Walking is the most basic form of transportation there is, and for a lot of
-> students it's the only one they have. This makes it safer."
+> students it is the only one they have. This makes it safer.
+
+*(covers: feasibility, potential impact, two or more SDGs, global scale)*
 
 ---
 
-## Recording notes
+## Rubric checklist
 
-- **Show the live site, not localhost.** A public URL reads as finished work.
-- Don't narrate the loading bar. Cut it.
-- If you show code, show `build_graph.py`'s risk model or `validate.py`'s
-  output — not boilerplate.
-- Mention the limitations honestly if you have room; the "How it works" tab
-  lists them. Judges trust a project more when it states what it can't do.
-- Keep your face-cam off unless the competition wants it. The map is the star.
+Run through this before uploading.
+
+| Category | Where it lands |
+|---|---|
+| Creativity (25) | Crime-weighted routing, juvenile weighting, riding as risk avoidance, the school report |
+| Complexity (15) | A* with a proven admissible heuristic, kernel density, transit with transfers, custom binary format |
+| Potential impact (20) | The 1,026 figure, four named SDGs, the school report, global scale stated explicitly |
+| Feasibility (10) | Live public URL, no backend, free hosting, all public data |
+| User interface (20) | Address entry, three route cards, plain-language explanation, street list, hour comparison |
+| Presentation (10) | Both speakers, live demo of walking and transit, limitations acknowledged |
+
+If you are over time, cut the waiting explanation at 1:35 and the SDG list at
+2:50 down to "four UN development goals". Do not cut the demo.
+
+Say the limitations out loud if you have eight spare seconds. The Method tab
+lists them, and judges trust a project more when it tells them what it cannot
+do.

@@ -3,523 +3,820 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Safe Routes to School — Los Angeles</title>
-<meta name="description" content="Risk-aware walking directions for Los Angeles students, built on 85,634 real violent-crime incidents. Routes around the streets where kids actually get hurt.">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<title>Safe Routes to School / Los Angeles</title>
+<meta name="theme-color" content="#e8e4d6">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="description" content="Walking directions for Los Angeles students built from 85,634 real violent-crime records, so the route accounts for where students actually get hurt and not just which way is shortest.">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,900&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0b0f14; --panel:#121821; --panel-2:#1a212c; --panel-3:#212a37;
-    --line:#242f3d; --line-2:#2f3d4e;
-    --ink:#eaf0f7; --ink-dim:#8fa0b6; --ink-faint:#5f6e81;
-    --safe:#35d98a; --fast:#ffb020; --danger:#ff4d5a; --accent:#5aa9ff;
+    /* Warm paper palette, carried over from the portfolio so the two sites
+       read as the same hand. Flat fills only, no gradients anywhere. */
+    --paper:#e8e4d6; --paper-2:#e2ddcc; --card:#efeadb; --card-2:#e5e0cf;
+    --ink:#211f18; --dim:#6b6857; --faint:#928e7a;
+    --rule:rgba(33,31,24,.14); --rule-2:rgba(33,31,24,.28);
+
+    /* Risk scale. Red is dangerous, yellow is middling, green is calm.
+       Deliberately kept off the UI chrome so colour only ever means risk. */
+    --r-low:#3c7a4e; --r-mid:#c8912b; --r-high:#a52714;
+
+    --disp:'Fraunces',Georgia,serif;
+    --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{
-    font-family:Inter,system-ui,-apple-system,sans-serif;
-    background:var(--bg); color:var(--ink); overflow:hidden;
-    -webkit-font-smoothing:antialiased;
+    font-family:var(--sans); background:var(--paper); color:var(--ink);
+    overflow:hidden; -webkit-font-smoothing:antialiased;
   }
-  #app{display:grid; grid-template-columns:390px 1fr; height:100vh}
+  #app{display:grid; grid-template-columns:412px 1fr; height:100vh}
 
   /* ------------------------------------------------------------- sidebar */
-  #side{background:var(--panel); border-right:1px solid var(--line);
-        display:flex; flex-direction:column; min-height:0}
+  #side{
+    background:var(--paper); border-right:1px solid var(--rule-2);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  .masthead{padding:20px 24px 15px; border-bottom:1px solid var(--rule-2); flex:none}
+  .masthead .kicker{
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--faint); margin-bottom:7px;
+  }
+  .masthead h1{
+    font-family:var(--disp); font-weight:900; font-size:25px;
+    line-height:1.04; letter-spacing:-.015em;
+  }
+  .masthead h1 em{font-style:normal; display:block; color:var(--dim); font-weight:500; font-size:18px}
+  .masthead p{font-size:12.5px; color:var(--dim); margin-top:9px; line-height:1.55; max-width:34ch}
 
-  .brand{padding:18px 22px 14px; border-bottom:1px solid var(--line); flex:none}
-  .brand h1{font-size:18px; font-weight:800; letter-spacing:-.35px; line-height:1.15}
-  .brand h1 span{color:var(--safe)}
-  .brand p{font-size:12px; color:var(--ink-dim); margin-top:6px; line-height:1.5}
-
-  .tabs{display:flex; border-bottom:1px solid var(--line); flex:none}
+  .tabs{display:flex; border-bottom:1px solid var(--rule-2); flex:none; background:var(--paper-2)}
   .tab{
     flex:1; padding:11px 6px; text-align:center; cursor:pointer;
-    font-size:12px; font-weight:600; color:var(--ink-faint);
-    border-bottom:2px solid transparent; transition:.14s; user-select:none;
+    font-family:var(--mono); font-size:10px; letter-spacing:.11em;
+    text-transform:uppercase; color:var(--faint); font-weight:500;
+    border-right:1px solid var(--rule); user-select:none;
   }
-  .tab:hover{color:var(--ink-dim)}
-  .tab.on{color:var(--safe); border-bottom-color:var(--safe)}
+  .tab:last-child{border-right:none}
+  .tab:hover{color:var(--dim); background:var(--card)}
+  .tab.on{background:var(--ink); color:var(--paper)}
 
   .panes{flex:1; overflow-y:auto; min-height:0}
   .pane{display:none} .pane.on{display:block}
-  .panes::-webkit-scrollbar{width:9px}
-  .panes::-webkit-scrollbar-thumb{background:var(--line-2); border-radius:5px}
-  .panes::-webkit-scrollbar-track{background:transparent}
+  .panes::-webkit-scrollbar{width:10px}
+  .panes::-webkit-scrollbar-thumb{background:var(--rule-2)}
+  .panes::-webkit-scrollbar-track{background:var(--paper-2)}
 
-  .stat-strip{display:flex; gap:1px; background:var(--line); border-bottom:1px solid var(--line)}
-  .stat-strip div{flex:1; background:var(--panel); padding:11px 6px; text-align:center}
-  .stat-strip b{display:block; font-family:'JetBrains Mono',monospace;
-                font-size:15px; color:var(--safe); font-weight:600}
-  .stat-strip small{font-size:9px; color:var(--ink-faint);
-                    text-transform:uppercase; letter-spacing:.55px}
-
-  .sec{padding:16px 22px; border-bottom:1px solid var(--line)}
+  .sec{padding:17px 24px; border-bottom:1px solid var(--rule)}
   .sec:last-child{border-bottom:none}
-  .sec h2{font-size:10px; text-transform:uppercase; letter-spacing:1.15px;
-          color:var(--ink-faint); font-weight:700; margin-bottom:11px}
+  .sec > h2{
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.15em;
+    text-transform:uppercase; color:var(--faint); font-weight:500; margin-bottom:12px;
+  }
+  .sec > h2 b{color:var(--ink); font-weight:600}
 
-  label.fld{display:block; margin-bottom:11px}
-  label.fld > span{display:block; font-size:11.5px; color:var(--ink-dim); margin-bottom:5px}
+  /* ------------------------------------------------------------- controls */
+  .fld{display:block; margin-bottom:13px; position:relative}
+  .fld > span{
+    display:block; font-size:11.5px; color:var(--dim); margin-bottom:5px; font-weight:500;
+  }
   input[type=text]{
-    width:100%; background:var(--panel-2); border:1px solid var(--line);
-    color:var(--ink); padding:9px 11px; border-radius:7px;
-    font-size:13px; font-family:inherit; outline:none; transition:.14s;
+    width:100%; background:#f4f0e4; border:1px solid var(--rule-2);
+    color:var(--ink); padding:9px 11px; font-size:13.5px;
+    font-family:inherit; outline:none;
   }
-  input[type=text]:focus{border-color:var(--accent); background:var(--panel-3)}
-  input::placeholder{color:var(--ink-faint)}
+  input[type=text]:focus{border-color:var(--ink); background:#faf7ee}
+  input::placeholder{color:var(--faint)}
 
-  .pill-row{display:flex; gap:6px}
-  .pill{
-    flex:1; text-align:center; padding:8px 4px; border-radius:7px; cursor:pointer;
-    background:var(--panel-2); border:1px solid var(--line);
-    font-size:10.5px; color:var(--ink-faint); user-select:none; transition:.14s;
+  .ac{
+    position:absolute; left:0; right:0; top:100%; z-index:50;
+    background:#faf7ee; border:1px solid var(--ink); border-top:none;
+    max-height:210px; overflow-y:auto; display:none;
   }
-  .pill:hover{border-color:var(--line-2); color:var(--ink-dim)}
-  .pill.on{background:rgba(90,169,255,.14); border-color:var(--accent); color:#d3e8ff}
-  .pill b{display:block; font-size:12.5px; font-weight:600; margin-bottom:1px}
-  .pill.on b{color:#eaf4ff}
+  .ac.on{display:block}
+  .ac div{padding:8px 11px; font-size:12.5px; cursor:pointer; border-bottom:1px solid var(--rule)}
+  .ac div:last-child{border-bottom:none}
+  .ac div:hover,.ac div.sel{background:var(--ink); color:var(--paper)}
+  .ac div small{display:block; font-size:10.5px; color:var(--faint); margin-top:1px}
+  .ac div:hover small,.ac div.sel small{color:var(--card-2)}
+  .ac .none{color:var(--faint); cursor:default}
+  .ac .none:hover{background:transparent; color:var(--faint)}
+  .ac .busy{color:var(--faint); cursor:default; font-style:italic}
+  .ac .busy:hover{background:transparent; color:var(--faint)}
+  /* A note is not a choice, so let clicks pass through to what sits under it. */
+  .ac .none,.ac .busy{pointer-events:none}
 
-  input[type=range]{width:100%; accent-color:var(--safe); margin:3px 0}
-  .range-ends{display:flex; justify-content:space-between; font-size:10px; color:var(--ink-faint)}
-
-  button.go{
-    width:100%; padding:11px; border:none; border-radius:8px; cursor:pointer;
-    background:var(--safe); color:#03291a; font-weight:700; font-size:13.5px;
-    font-family:inherit; transition:.14s;
+  /* Text-only buttons for secondary actions beside a field. */
+  button.link{
+    background:none; border:none; padding:0; cursor:pointer; color:var(--ink);
+    font-family:var(--sans); font-size:11.5px; text-decoration:underline;
+    text-underline-offset:2px; text-decoration-color:var(--rule-2);
   }
-  button.go:hover:not(:disabled){filter:brightness(1.09)}
-  button.go:disabled{background:var(--panel-2); color:var(--ink-faint); cursor:not-allowed}
+  button.link:hover{text-decoration-color:var(--ink)}
+  button.link:disabled{color:var(--faint); cursor:default; text-decoration:none}
+  .fld > span.cap{display:flex; justify-content:space-between; align-items:baseline; gap:8px}
+  .rowb{display:flex; justify-content:center; align-items:center; margin:9px 0 0}
 
-  .hint{font-size:11px; color:var(--ink-faint); line-height:1.55; margin-top:8px}
-  .hint kbd{background:var(--panel-3); border:1px solid var(--line-2); border-radius:4px;
-            padding:1px 5px; font-family:'JetBrains Mono',monospace; font-size:10px}
-
-  /* ------------------------------------------------------------- results */
-  #results{display:none} #results.show{display:block}
-  .route-card{
-    background:var(--panel-2); border:1px solid var(--line); border-left-width:3px;
-    border-radius:8px; padding:11px 13px; margin-bottom:8px;
+  .seg{display:flex; border:1px solid var(--rule-2)}
+  .seg div{
+    flex:1; text-align:center; padding:9px 4px; cursor:pointer;
+    font-size:11px; color:var(--dim); user-select:none;
+    border-right:1px solid var(--rule-2); background:#f4f0e4;
   }
-  .route-card.safe{border-left-color:var(--safe)}
-  .route-card.fast{border-left-color:var(--fast)}
-  .route-card h3{font-size:12px; font-weight:600; margin-bottom:8px;
-                 display:flex; justify-content:space-between; gap:8px}
-  .route-card h3 em{font-style:normal; font-size:10.5px; color:var(--ink-faint); font-weight:400}
-  .metrics{display:flex; gap:12px}
-  .metrics div{flex:1}
-  .metrics b{display:block; font-family:'JetBrains Mono',monospace;
-             font-size:14.5px; font-weight:600}
-  .metrics small{font-size:9px; color:var(--ink-faint);
-                 text-transform:uppercase; letter-spacing:.5px}
-  .safe b{color:var(--safe)} .fast b{color:var(--fast)}
+  .seg div:last-child{border-right:none}
+  .seg div:hover{background:var(--card)}
+  .seg div.on{background:var(--ink); color:var(--paper)}
+  .seg div b{display:block; font-size:12.5px; font-weight:600; margin-bottom:1px}
+  .seg div small{font-size:9.5px; opacity:.8}
 
-  .verdict{
-    background:linear-gradient(135deg,rgba(53,217,138,.14),rgba(53,217,138,.04));
-    border:1px solid rgba(53,217,138,.28); border-radius:8px;
-    padding:11px 13px; font-size:12.5px; line-height:1.6; color:#c5f0dc;
+  button.act{
+    width:100%; padding:11px; border:1px solid var(--ink); cursor:pointer;
+    background:var(--ink); color:var(--paper); font-weight:600; font-size:13px;
+    font-family:inherit; letter-spacing:.01em;
   }
-  .verdict b{color:var(--safe); font-family:'JetBrains Mono',monospace; font-weight:600}
-  .verdict.flat{background:rgba(255,176,32,.08); border-color:rgba(255,176,32,.25); color:#ffe0b0}
-  .verdict.flat b{color:var(--fast)}
+  button.act:hover:not(:disabled){background:#000}
+  button.act:disabled{
+    background:transparent; color:var(--faint); border-color:var(--rule-2); cursor:not-allowed;
+  }
+  button.ghost{
+    width:100%; padding:9px; border:1px solid var(--rule-2); cursor:pointer;
+    background:transparent; color:var(--dim); font-size:12px; font-family:inherit;
+  }
+  button.ghost:hover{border-color:var(--ink); color:var(--ink)}
 
-  .worst{margin-top:9px; font-size:11.5px; color:var(--ink-dim); line-height:1.6}
-  .worst b{color:var(--danger); font-weight:600}
+  .note{font-size:11.5px; color:var(--faint); line-height:1.55; margin-top:8px}
 
-  /* ---------------------------------------------------------- about pane */
-  .prose{font-size:12.5px; line-height:1.65; color:var(--ink-dim)}
+  /* ---------------------------------------------------------- empty state */
+  ol.steps{list-style:none; counter-reset:s}
+  ol.steps li{
+    counter-increment:s; position:relative; padding-left:30px;
+    margin-bottom:11px; font-size:12.5px; color:var(--dim); line-height:1.5;
+  }
+  ol.steps li::before{
+    content:counter(s); position:absolute; left:0; top:-1px;
+    font-family:var(--mono); font-size:10.5px; font-weight:600;
+    width:20px; height:20px; line-height:20px; text-align:center;
+    border:1px solid var(--rule-2); color:var(--ink);
+  }
+  ol.steps li b{color:var(--ink); font-weight:600}
+
+  /* -------------------------------------------------------- route cards */
+  .cards{display:flex; flex-direction:column; gap:0; border:1px solid var(--rule-2)}
+  .rc{
+    display:grid; grid-template-columns:auto 1fr auto; gap:11px; align-items:center;
+    padding:11px 12px; cursor:pointer; border-bottom:1px solid var(--rule-2);
+    background:#f4f0e4;
+  }
+  .rc:last-child{border-bottom:none}
+  .rc:hover{background:var(--card)}
+  .rc.on{background:var(--ink); color:var(--paper)}
+  .rc .swatch{width:4px; align-self:stretch; min-height:34px}
+  .rc .who b{display:block; font-size:13px; font-weight:600; letter-spacing:-.01em}
+  .rc .who small{font-size:10.5px; color:var(--faint)}
+  .rc.on .who small{color:var(--card-2)}
+  .rc .num{text-align:right; font-family:var(--mono)}
+  .rc .num b{display:block; font-size:15px; font-weight:600; line-height:1.15}
+  .rc .num small{font-size:9.5px; color:var(--faint); letter-spacing:.04em}
+  .rc.on .num small{color:var(--card-2)}
+
+  /* ------------------------------------------------------------ readout */
+  .readout{border:1px solid var(--rule-2); background:#f4f0e4}
+  .readout .row{
+    display:flex; justify-content:space-between; align-items:baseline;
+    padding:9px 12px; border-bottom:1px solid var(--rule); font-size:12px;
+  }
+  .readout .row:last-child{border-bottom:none}
+  .readout .row span{color:var(--dim)}
+  .readout .row b{font-family:var(--mono); font-weight:600; font-size:13px}
+
+  .because{
+    border-left:3px solid var(--r-low); padding:1px 0 1px 12px;
+    font-size:12.5px; line-height:1.62; color:var(--ink);
+  }
+  .because.flat{border-left-color:var(--r-mid)}
+  .because b{font-family:var(--mono); font-weight:600}
+  .because .st{font-weight:600}
+
+  /* departure comparison: flat bars, no gradient */
+  .hours{display:flex; flex-direction:column; gap:7px}
+  .hrow{display:grid; grid-template-columns:74px 1fr 34px; gap:9px; align-items:center}
+  .hrow > span:first-child{font-size:11.5px; color:var(--dim); white-space:nowrap}
+  .hrow .track{height:12px; background:var(--card-2); position:relative}
+  .hrow .bar{display:block; height:12px}
+  .hrow b{font-family:var(--mono); font-size:12px; font-weight:600; text-align:right}
+  .hrow.now > span:first-child{color:var(--ink); font-weight:600}
+  .hrow .nowtag{color:var(--faint); font-weight:400}
+
+  /* turn list */
+  details.turns summary{
+    cursor:pointer; font-family:var(--mono); font-size:9.5px; letter-spacing:.15em;
+    text-transform:uppercase; color:var(--faint); list-style:none; padding:2px 0;
+  }
+  details.turns summary::-webkit-details-marker{display:none}
+  details.turns summary:hover{color:var(--ink)}
+  details.turns summary::before{content:'+ '; font-weight:600}
+  details.turns[open] summary::before{content:'\2212 '}
+  ol.turnlist{list-style:none; margin-top:10px; max-height:230px; overflow-y:auto}
+  ol.turnlist li{
+    display:grid; grid-template-columns:1fr auto auto; gap:9px; align-items:baseline;
+    padding:6px 0; border-bottom:1px solid var(--rule); font-size:12px;
+  }
+  ol.turnlist li:last-child{border-bottom:none}
+  ol.turnlist .m{font-family:var(--mono); font-size:11px; color:var(--dim)}
+  ol.turnlist .chip{
+    font-family:var(--mono); font-size:9.5px; padding:1px 5px;
+    border:1px solid currentColor; white-space:nowrap;
+  }
+
+  /* -------------------------------------------------------- school report */
+  table.approach{width:100%; border-collapse:collapse; font-size:12px}
+  table.approach th{
+    font-family:var(--mono); font-size:9px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--faint); font-weight:500;
+    text-align:left; padding:0 8px 7px 0; border-bottom:1px solid var(--rule-2);
+  }
+  table.approach th:last-child,table.approach td:last-child{text-align:right; padding-right:0}
+  table.approach td{padding:7px 8px 7px 0; border-bottom:1px solid var(--rule); color:var(--dim)}
+  table.approach tr:last-child td{border-bottom:none}
+  table.approach td.dir{color:var(--ink); font-weight:600}
+  table.approach td.sc{font-family:var(--mono); font-weight:600}
+  table.approach tr.worst td{background:rgba(165,39,20,.09)}
+  table.approach tr.best  td{background:rgba(60,122,78,.09)}
+  table.approach td .swatch{
+    display:inline-block; width:9px; height:9px; margin-right:6px; vertical-align:-1px;
+  }
+
+  /* ---------------------------------------------------------------- prose */
+  .prose{font-size:12.5px; line-height:1.68; color:var(--dim)}
   .prose p{margin-bottom:10px}
+  .prose p:last-child{margin-bottom:0}
   .prose strong{color:var(--ink); font-weight:600}
-  .prose code{font-family:'JetBrains Mono',monospace; font-size:11.5px;
-              background:var(--panel-3); padding:1.5px 5px; border-radius:4px; color:#cfe6ff}
-  .bignum{
-    font-family:'JetBrains Mono',monospace; font-size:30px; font-weight:600;
-    color:var(--danger); line-height:1; letter-spacing:-1px;
-  }
-  .bignum + p{margin-top:7px}
+  .prose code{font-family:var(--mono); font-size:11.5px; background:var(--card-2); padding:1px 4px}
+  .prose a{color:var(--ink); text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:2px}
 
-  .sdg{display:flex; flex-direction:column; gap:7px}
-  .sdg-item{
-    display:flex; gap:10px; align-items:flex-start;
-    background:var(--panel-2); border:1px solid var(--line);
-    border-radius:7px; padding:9px 11px;
-  }
-  .sdg-num{
-    font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600;
-    background:var(--accent); color:#04121f; border-radius:4px;
-    padding:2px 6px; flex:none; margin-top:1px;
-  }
-  .sdg-item div b{display:block; font-size:11.5px; color:var(--ink); margin-bottom:2px}
-  .sdg-item div span{font-size:11px; color:var(--ink-dim); line-height:1.5}
+  .figure{border-top:1px solid var(--rule-2); border-bottom:1px solid var(--rule-2); padding:13px 0; margin:13px 0}
+  .figure .n{font-family:var(--mono); font-size:30px; font-weight:600; color:var(--r-high); line-height:1; letter-spacing:-.03em}
+  .figure .c{font-size:12px; color:var(--dim); margin-top:7px; line-height:1.55}
 
-  table.rate{width:100%; border-collapse:collapse; margin-top:9px; font-size:12px}
-  table.rate td{padding:6px 9px; border-bottom:1px solid var(--line); color:var(--ink-dim)}
-  table.rate td:last-child{
-    text-align:right; font-family:'JetBrains Mono',monospace;
-    font-weight:600; color:var(--ink);
+  table.data{width:100%; border-collapse:collapse; font-size:12px; margin-top:4px}
+  table.data th{
+    font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--faint); font-weight:500; text-align:left; padding:0 6px 6px 0;
+    border-bottom:1px solid var(--rule-2);
   }
-  table.rate td span{color:var(--ink-faint); font-size:10.5px; margin-left:4px}
-  table.rate tr:last-child td{border-bottom:none}
-  table.rate tr.hi td{background:rgba(255,77,90,.1); color:#ffc9ce}
-  table.rate tr.hi td:last-child{color:var(--danger)}
+  table.data th:last-child,table.data td:last-child{text-align:right; padding-right:0}
+  table.data td{padding:6px 6px 6px 0; border-bottom:1px solid var(--rule); color:var(--dim)}
+  table.data tr:last-child td{border-bottom:none}
+  table.data td:last-child{font-family:var(--mono); font-weight:600; color:var(--ink)}
+  table.data tr.mark td{background:rgba(200,145,43,.13)}
 
-  .srcs{font-size:11.5px; line-height:1.75}
-  .srcs a{color:var(--accent); text-decoration:none}
-  .srcs a:hover{text-decoration:underline}
-  .limits{font-size:11.5px; line-height:1.65; color:var(--ink-faint)}
-  .limits li{margin-bottom:7px; margin-left:15px}
+  ul.plain{list-style:none}
+  ul.plain li{
+    font-size:12px; color:var(--dim); line-height:1.6; padding:7px 0 7px 15px;
+    border-bottom:1px solid var(--rule); position:relative;
+  }
+  ul.plain li:last-child{border-bottom:none}
+  ul.plain li::before{content:''; position:absolute; left:0; top:14px; width:6px; height:1px; background:var(--rule-2)}
+  ul.plain li strong{color:var(--ink); font-weight:600}
+
+  .sdg{display:flex; flex-direction:column}
+  .sdg div{
+    display:grid; grid-template-columns:32px 1fr; gap:10px;
+    padding:9px 0; border-bottom:1px solid var(--rule);
+  }
+  .sdg div:last-child{border-bottom:none}
+  .sdg .g{font-family:var(--mono); font-size:14px; font-weight:600; color:var(--ink)}
+  .sdg b{display:block; font-size:12px; color:var(--ink); font-weight:600; margin-bottom:2px}
+  .sdg span{font-size:11.5px; color:var(--dim); line-height:1.55}
 
   /* ---------------------------------------------------------------- map */
-  #mapwrap{position:relative; min-width:0}
-  #map{position:absolute; inset:0; background:#080b10}
-  .leaflet-container{background:#080b10; font-family:inherit}
+  #mapwrap{position:relative; min-width:0; background:var(--paper-2)}
+  #map{position:absolute; inset:0}
+  .leaflet-container{background:var(--paper-2); font-family:var(--sans)}
+  /* Warm the basemap to sit on paper. Applied to the tile pane only, so route
+     and risk overlays keep their exact colours. */
+  .leaflet-tile-pane{filter:grayscale(.42) sepia(.26) brightness(1.03) contrast(.93)}
   .leaflet-control-attribution{
-    background:rgba(11,15,20,.82)!important; color:var(--ink-faint)!important;
-    font-size:10px!important;
+    background:rgba(232,228,214,.9)!important; color:var(--faint)!important;
+    font-size:9.5px!important; font-family:var(--mono)!important;
   }
-  .leaflet-control-attribution a{color:var(--ink-dim)!important}
+  .leaflet-control-attribution a{color:var(--dim)!important}
+  .leaflet-bar{border:1px solid var(--rule-2)!important; box-shadow:none!important}
+  .leaflet-bar a{
+    background:var(--card)!important; color:var(--ink)!important;
+    border-bottom-color:var(--rule)!important;
+  }
+  .leaflet-bar a:hover{background:var(--paper-2)!important}
 
   #legend{
-    position:absolute; right:14px; bottom:22px; z-index:600;
-    background:rgba(18,24,33,.93); backdrop-filter:blur(10px);
-    border:1px solid var(--line); border-radius:9px; padding:11px 13px;
-    font-size:11px; color:var(--ink-dim); min-width:158px;
+    position:absolute; right:16px; bottom:22px; z-index:600;
+    background:var(--paper); border:1px solid var(--rule-2);
+    padding:12px 14px; font-size:11px; color:var(--dim); min-width:172px;
   }
-  #legend h4{font-size:9px; text-transform:uppercase; letter-spacing:.85px;
-             color:var(--ink-faint); margin-bottom:8px; font-weight:700}
-  #legend h4 span{color:var(--accent)}
-  .lg{display:flex; align-items:center; gap:8px; margin-bottom:5px}
-  .lg i{width:18px; height:3px; border-radius:2px; display:block; flex:none}
-  .lg i.dash{background:repeating-linear-gradient(90deg,var(--fast) 0 3px,transparent 3px 6px)}
-  .ramp{height:8px; border-radius:4px; margin:7px 0 4px;
-        background:linear-gradient(90deg,#1f6f4a,#8fbf3f,#ffb020,#ff6b35,#ff2d2d)}
-  .ramp-ends{display:flex; justify-content:space-between; font-size:9px; color:var(--ink-faint)}
+  #legend h4{
+    font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--faint); margin-bottom:9px; font-weight:500;
+  }
+  #legend h4 b{color:var(--ink); font-weight:600}
+  .scale{display:flex; height:9px}
+  .scale i{flex:1}
+  .scale-ends{display:flex; justify-content:space-between; font-size:9.5px; color:var(--faint); margin-top:4px}
+  .lg{display:flex; align-items:center; gap:9px; margin-top:6px}
+  .lg i{width:20px; height:3px; display:block; flex:none}
+  #legend .cnt{font-family:var(--mono); font-size:9.5px; color:var(--faint); margin-top:9px; padding-top:8px; border-top:1px solid var(--rule)}
 
-  #zoomhint{
+  #hint{
     position:absolute; left:50%; bottom:22px; transform:translateX(-50%); z-index:600;
-    background:rgba(18,24,33,.93); border:1px solid var(--line); border-radius:20px;
-    padding:6px 15px; font-size:11.5px; color:var(--ink-dim); display:none;
+    background:var(--ink); color:var(--paper); padding:7px 15px;
+    font-size:11.5px; display:none;
   }
-  #zoomhint.show{display:block}
+  #hint.show{display:block}
 
-  #loading{
-    position:absolute; inset:0; z-index:900; background:rgba(11,15,20,.97);
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:13px;
+  #boot{
+    position:absolute; inset:0; z-index:900; background:var(--paper);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
   }
-  #loading.done{display:none}
-  .spin{width:32px; height:32px; border:3px solid var(--line);
-        border-top-color:var(--safe); border-radius:50%; animation:sp .8s linear infinite}
-  @keyframes sp{to{transform:rotate(360deg)}}
-  #loading p{font-size:13px; color:var(--ink-dim)}
-  #loading small{font-size:11px; color:var(--ink-faint)}
+  #boot.done{display:none}
+  #boot .bar{width:210px; height:3px; background:var(--card-2)}
+  #boot .bar i{display:block; height:3px; background:var(--ink); width:0}
+  #boot p{font-size:13px; color:var(--ink)}
+  #boot small{font-family:var(--mono); font-size:11px; color:var(--faint)}
 
-  .marker-pin{width:15px;height:15px;border-radius:50%;border:2.5px solid #fff;
-              box-shadow:0 0 0 2px rgba(0,0,0,.55), 0 2px 9px rgba(0,0,0,.65)}
+  .pin{width:13px; height:13px; border:2px solid var(--paper); box-shadow:0 0 0 1px var(--ink)}
   .toast{
-    position:absolute; top:14px; left:50%; transform:translateX(-50%); z-index:800;
-    background:rgba(255,77,90,.95); color:#fff; padding:9px 17px; border-radius:8px;
-    font-size:12.5px; font-weight:500; display:none; box-shadow:0 4px 18px rgba(0,0,0,.4);
+    position:absolute; top:16px; left:50%; transform:translateX(-50%); z-index:800;
+    background:var(--r-high); color:#fff; padding:9px 16px; font-size:12.5px; display:none;
   }
   .toast.show{display:block}
 
-  @media (max-width:880px){
-    #app{grid-template-columns:1fr; grid-template-rows:minmax(0,46vh) 1fr}
-    #side{border-right:none; border-bottom:1px solid var(--line)}
-    #legend{right:10px; bottom:14px; min-width:0; padding:9px 11px}
+  @media (max-width:900px){
+    #app{grid-template-columns:1fr; grid-template-rows:minmax(0,48vh) 1fr}
+    #side{border-right:none; border-bottom:1px solid var(--rule-2)}
+    #legend{right:10px; bottom:12px; min-width:0; padding:9px 11px}
+  }
+
+  /* --------------------------------------------------------- language */
+  .masthead{position:relative}
+  #lang{
+    position:absolute; top:18px; right:22px; display:flex; gap:0;
+    border:1px solid var(--rule-2); font-family:var(--mono); font-size:9.5px;
+    letter-spacing:.1em;
+  }
+  #lang span{padding:4px 7px; cursor:pointer; color:var(--faint); user-select:none}
+  #lang span:hover{color:var(--ink)}
+  #lang span.on{background:var(--ink); color:var(--paper)}
+
+  /* ------------------------------------------------------------ network */
+  #net{display:none; font-family:var(--mono); font-size:9.5px; letter-spacing:.1em;
+       text-transform:uppercase; color:var(--faint); margin-top:8px}
+  #net.show{display:block}
+  #net b{color:var(--ink); font-weight:600}
+
+  /* ---------------------------------------------------- actions on a route */
+  .actions{display:grid; grid-template-columns:1fr 1fr; gap:7px}
+  .actions button{width:100%}
+  .actions a.ghost{
+    display:block; grid-column:1 / -1; text-align:center; text-decoration:none;
+    padding:9px; border:1px solid var(--rule-2); color:var(--dim); font-size:12px;
+  }
+  .actions a.ghost:hover{border-color:var(--ink); color:var(--ink)}
+
+  /* ------------------------------------------------------------- snippet */
+  textarea.snippet{
+    width:100%; height:86px; resize:vertical; background:#f4f0e4;
+    border:1px solid var(--rule-2); color:var(--ink); padding:8px 10px;
+    font-family:var(--mono); font-size:10.5px; line-height:1.5; outline:none;
+  }
+  textarea.snippet:focus{border-color:var(--ink)}
+
+  /* ---------------------------------------------------------------- embed */
+  body.embed .masthead p, body.embed .tabs, body.embed #intro,
+  body.embed #r-embed{display:none}
+  body.embed .masthead{padding:14px 24px 12px}
+  body.embed .masthead h1{font-size:20px}
+  body.embed .masthead h1 em{font-size:15px}
+  body.embed #lang{top:12px}
+  .preset{
+    font-size:11.5px; color:var(--dim); line-height:1.5; padding:9px 11px;
+    border:1px solid var(--rule-2); background:#f4f0e4; margin-bottom:12px;
+  }
+  .preset b{color:var(--ink); font-weight:600}
+  .preset a{color:var(--ink)}
+
+  /* ------------------------------------------------------------ print card */
+  #printcard{display:none}
+  @media print{
+    @page{margin:14mm}
+    html,body{height:auto; overflow:visible; background:#fff; color:#000}
+    #app{display:none!important}
+    #printcard{display:block; font-family:Georgia,'Times New Roman',serif; color:#000; max-width:170mm}
+    #printcard .k{font-family:'Courier New',monospace; font-size:9pt; letter-spacing:.12em; text-transform:uppercase; color:#555; margin-bottom:4pt}
+    #printcard h1{font-size:20pt; margin:0 0 2pt; line-height:1.1}
+    #printcard h1 small{display:block; font-size:12pt; font-weight:normal; color:#444; margin-top:2pt}
+    #printcard .meta{font-size:10.5pt; color:#333; margin:6pt 0 10pt; line-height:1.5}
+    #printcard table.sum{width:100%; border-collapse:collapse; margin:8pt 0 10pt; font-size:11pt}
+    #printcard table.sum td{padding:4pt 6pt 4pt 0; border-bottom:1px solid #bbb}
+    #printcard table.sum td:last-child{text-align:right; font-family:'Courier New',monospace; font-weight:bold}
+    #printcard .why{border-left:3pt solid #000; padding:2pt 0 2pt 9pt; font-size:11pt; line-height:1.5; margin:8pt 0 12pt}
+    #printcard h2{font-family:'Courier New',monospace; font-size:9pt; letter-spacing:.12em; text-transform:uppercase; color:#555; margin:12pt 0 5pt; font-weight:normal}
+    #printcard ol{list-style:none; padding:0; margin:0}
+    #printcard ol li{display:grid; grid-template-columns:1fr auto auto; gap:10pt; padding:3.5pt 0; border-bottom:1px solid #ddd; font-size:10.5pt; page-break-inside:avoid}
+    #printcard ol li .m{font-family:'Courier New',monospace; color:#444}
+    #printcard ol li .c{font-family:'Courier New',monospace; border:1px solid #000; padding:0 4pt; min-width:22pt; text-align:center}
+    #printcard .hours{margin:6pt 0}
+    #printcard .hours div{display:grid; grid-template-columns:70pt 1fr 32pt; gap:8pt; align-items:center; font-size:10pt; margin:3pt 0}
+    #printcard .hours .t{height:8pt; background:#eee; position:relative}
+    #printcard .hours .t i{display:block; height:8pt; background:#000}
+    #printcard .hours b{font-family:'Courier New',monospace; text-align:right}
+    #printcard .foot{margin-top:14pt; padding-top:8pt; border-top:1px solid #000; font-size:9pt; color:#444; line-height:1.5}
+    #printcard .foot .url{font-family:'Courier New',monospace; word-break:break-all; color:#000}
   }
 </style>
 </head>
 <body>
 <div id="app">
   <aside id="side">
-    <div class="brand">
-      <h1>Safe Routes <span>to School</span></h1>
-      <p>Walking directions for Los Angeles students that route around the
-         streets where kids actually get hurt — not just the shortest way.</p>
+    <div class="masthead">
+      <div class="kicker" data-t="kicker">Los Angeles / 2020&ndash;2024</div>
+      <div id="lang" title="Language / Idioma">
+        <span class="on" data-l="en">EN</span><span data-l="es">ES</span>
+      </div>
+      <h1>Safe Routes<em data-t="h1sub">to School</em></h1>
+      <p data-t="tagline">Walking directions built from where students actually get robbed,
+         rather than from distance alone.</p>
+      <div id="net"></div>
     </div>
 
     <div class="tabs">
-      <div class="tab on" data-p="route">Route</div>
-      <div class="tab" data-p="why">Why it matters</div>
-      <div class="tab" data-p="how">How it works</div>
+      <div class="tab on" data-p="route" data-t="tab.route">Route</div>
+      <div class="tab" data-p="school" data-t="tab.school">School</div>
+      <div class="tab" data-p="method" data-t="tab.method">Method</div>
     </div>
 
     <div class="panes">
-      <!-- ------------------------------------------------------- ROUTE -->
+      <!-- ======================================================= ROUTE -->
       <div class="pane on" id="p-route">
-        <div class="stat-strip">
-          <div><b id="s-schools">—</b><small>Schools</small></div>
-          <div><b id="s-blocks">—</b><small>Blocks scored</small></div>
-          <div><b id="s-crimes">—</b><small>Incidents</small></div>
+
+        <div class="sec" id="intro">
+          <h2 data-t="intro.h">How to use this</h2>
+          <ol class="steps">
+            <li data-t="intro.1">Pick the <b>school</b> you walk to.</li>
+            <li data-t="intro.2">Type the <b>address or cross streets</b> you start from, or
+                click anywhere on the map.</li>
+            <li data-t="intro.3">Compare the <b>three routes</b> it offers and pick one.</li>
+          </ol>
+          <button class="ghost" id="demo" data-t="intro.demo">Show me a worked example</button>
         </div>
 
         <div class="sec">
-          <h2>Trip</h2>
+          <h2 data-t="walk.h">The walk</h2>
+          <div class="preset" id="preset" style="display:none"></div>
           <label class="fld">
-            <span>School</span>
-            <input type="text" id="school" list="schoollist"
-                   placeholder="Start typing a school name…" autocomplete="off">
-            <datalist id="schoollist"></datalist>
+            <span data-t="walk.school">School</span>
+            <input type="text" id="school" placeholder="Start typing a school name" data-tp="ph.school" autocomplete="off">
+            <div class="ac" id="ac-school"></div>
           </label>
-          <label class="fld" style="margin-bottom:6px">
-            <span>Starting point</span>
-            <input type="text" id="origin" placeholder="Click the map to drop a pin" readonly>
+          <label class="fld" style="margin-bottom:7px">
+            <span class="cap"><span data-t="walk.from">Starting from</span>
+              <button type="button" class="link" id="locate" data-t="walk.locate">Use my location</button></span>
+            <input type="text" id="origin" placeholder="Address, or cross streets like Hauser &amp; Venice" data-tp="ph.origin" autocomplete="off">
+            <div class="ac" id="ac-origin"></div>
           </label>
-          <p class="hint">Click the map to set where the walk begins.
-             <kbd>Shift</kbd>+click sets a custom destination instead.</p>
+          <p class="note" data-t="walk.note">Two cross streets, like <b>Hauser &amp; Venice</b>, are
+             found on this device and work offline. Full addresses are looked up
+             through OpenStreetMap. You can also click the map to drop a pin.</p>
         </div>
 
         <div class="sec">
-          <h2>When is the walk?</h2>
-          <div class="pill-row" id="timepills">
-            <div class="pill on" data-b="0"><b>Morning</b>to school</div>
-            <div class="pill" data-b="1"><b>Afternoon</b>walking home</div>
-            <div class="pill" data-b="2"><b>After dark</b>evening</div>
+          <h2 data-t="when.h">Time of day</h2>
+          <div class="seg" id="when">
+            <div data-b="0"><b data-t="when.0">Morning</b><small data-t="when.0s">5am to 10am</small></div>
+            <div data-b="1"><b data-t="when.1">Afternoon</b><small data-t="when.1s">10am to 5pm</small></div>
+            <div data-b="2"><b data-t="when.2">Evening</b><small data-t="when.2s">5pm to 5am</small></div>
           </div>
+          <p class="note" id="when-note"></p>
         </div>
 
         <div class="sec">
-          <h2>How much detour is worth it?</h2>
-          <input type="range" id="lam" min="0" max="100" value="55">
-          <div class="range-ends"><span>Shortest walk</span><span>Safest walk</span></div>
-          <button class="go" id="go" style="margin-top:14px" disabled>Find the safest route</button>
+          <h2 data-t="mode.h">Getting there</h2>
+          <div class="seg" id="mode">
+            <div class="on" data-m="foot"><b data-t="mode.foot">On foot</b><small data-t="mode.foots">the whole way</small></div>
+            <div data-m="bus"><b data-t="mode.bus">Bus or rail</b><small data-t="mode.buss">walk to a stop</small></div>
+          </div>
+          <p class="note" id="mode-note" data-t="mode.note">Riding covers distance without putting
+             you on the street, so a bus trip usually carries less exposure even
+             when it takes longer.</p>
         </div>
 
-        <div class="sec" id="results">
-          <h2>Result</h2>
-          <div class="route-card safe">
-            <h3><span>Safest route</span><em id="r-safe-note"></em></h3>
-            <div class="metrics">
-              <div><b id="safe-dist">—</b><small>Distance</small></div>
-              <div><b id="safe-time">—</b><small>Walk time</small></div>
-              <div><b id="safe-risk">—</b><small>Risk / 100 m</small></div>
-            </div>
+        <div class="sec" id="go-wrap">
+          <button class="act" id="go" disabled data-t="go">Compare routes</button>
+          <div class="rowb" id="clear-wrap" style="display:none">
+            <button type="button" class="link" id="clear" data-t="clear">Start over</button>
           </div>
-          <div class="route-card fast">
-            <h3><span>Shortest route</span><em>what a map app gives you</em></h3>
-            <div class="metrics">
-              <div><b id="fast-dist">—</b><small>Distance</small></div>
-              <div><b id="fast-time">—</b><small>Walk time</small></div>
-              <div><b id="fast-risk">—</b><small>Risk / 100 m</small></div>
-            </div>
+        </div>
+
+        <!-- results -->
+        <div class="sec" id="r-cards" style="display:none">
+          <h2 data-t="cards.h">Three options</h2>
+          <div class="cards" id="cards"></div>
+          <p class="note" data-t="cards.note">Exposure is the average risk of the blocks you walk,
+             scored from 0 to 100 against every block in Los Angeles at that
+             hour. Lower is calmer.</p>
+        </div>
+
+        <div class="sec" id="r-because" style="display:none">
+          <h2 data-t="why.h">Why this route</h2>
+          <div class="because" id="because"></div>
+        </div>
+
+        <div class="sec" id="r-hours" style="display:none">
+          <h2 data-t="hours.h">Same route, <b>different hour</b></h2>
+          <div class="hours" id="hours"></div>
+          <p class="note" id="hours-note"></p>
+        </div>
+
+        <div class="sec" id="r-turns" style="display:none">
+          <details class="turns">
+            <summary data-t="turns.h">Street by street</summary>
+            <ol class="turnlist" id="turnlist"></ol>
+          </details>
+        </div>
+
+        <div class="sec" id="r-share" style="display:none">
+          <h2 data-t="keep.h">Keep this route</h2>
+          <div class="actions">
+            <button class="ghost" id="share" data-t="keep.copy">Copy a link</button>
+            <button class="ghost" id="print" data-t="keep.print">Print a walking card</button>
+            <a class="ghost" id="report" href="#" target="_blank" rel="noopener" data-t="keep.report">Report a problem with this route</a>
           </div>
-          <div class="verdict" id="verdict"></div>
-          <div class="worst" id="worst"></div>
+          <p class="note" data-t="keep.note">A link opens this exact trip on any phone. The card
+             is for a student without one: the streets, in order, on a single
+             sheet.</p>
         </div>
 
         <div class="sec">
-          <h2>Map layers</h2>
-          <div class="pill-row">
-            <div class="pill on" id="t-risk">Risk heatmap</div>
-            <div class="pill" id="t-schools">All schools</div>
+          <h2 data-t="layers.h">Map layers</h2>
+          <div class="seg">
+            <div class="on" id="t-risk" data-t="layers.risk">Risk</div>
+            <div id="t-schools" data-t="layers.schools">Schools</div>
           </div>
         </div>
       </div>
 
-      <!-- --------------------------------------------------------- WHY -->
-      <div class="pane" id="p-why">
+      <!-- ====================================================== SCHOOL -->
+      <div class="pane" id="p-school">
         <div class="sec">
-          <h2>The number this is built on</h2>
-          <div class="bignum">1,026</div>
-          <p class="prose" style="margin-top:7px">
-            Children aged 10–18 robbed on the streets of Los Angeles
-            <strong>during school commute hours</strong> between 2020 and 2024.
-            That is <strong>56% of all 1,838 robberies of kids in that age
-            range</strong> — more than half, concentrated into about five hours
-            of the day.
+          <h2 data-t="rc.h">School report</h2>
+          <p class="prose" data-t="rc.p">A single route only tells one student what to do.
+             This scores every direction a student might approach a school
+             from, which is the version a principal or a council member can
+             act on.</p>
+        </div>
+
+        <div class="sec">
+          <label class="fld" style="margin-bottom:9px">
+            <span data-t="rc.school">School</span>
+            <input type="text" id="rc-school" placeholder="Start typing a school name" data-tp="ph.school" autocomplete="off">
+            <div class="ac" id="ac-rc"></div>
+          </label>
+          <button class="act" id="rc-run" disabled data-t="rc.run">Score every approach</button>
+          <p class="note" data-t="rc.note">Sends a walker inward from 16 compass points about
+             1.2 km out, then ranks the approaches by what they walk through.</p>
+        </div>
+
+        <div class="sec" id="rc-out" style="display:none">
+          <h2 id="rc-title">Approaches</h2>
+          <table class="approach">
+            <thead><tr><th data-t="rc.th.from">From</th><th data-t="rc.th.walk">Walk</th><th data-t="rc.th.exp">Exposure</th></tr></thead>
+            <tbody id="rc-body"></tbody>
+          </table>
+          <p class="note" id="rc-note"></p>
+        </div>
+
+        <div class="sec" id="r-embed" style="display:none">
+          <h2 data-t="emb.h">Put this on your school's website</h2>
+          <p class="prose" data-t="emb.p">Paste this where a page accepts HTML. It opens the
+             planner with your school already chosen, so a student only has to
+             type where they start.</p>
+          <textarea class="snippet" id="embed-code" readonly spellcheck="false"></textarea>
+          <button class="ghost" id="embed-copy" style="margin-top:7px" data-t="emb.copy">Copy the code</button>
+          <p class="note" data-t="emb.note">It also works as a plain link, for a newsletter or a
+             text to families.</p>
+        </div>
+      </div>
+
+      <!-- ====================================================== METHOD -->
+      <div class="pane" id="p-method">
+        <div class="sec">
+          <h2 data-t="m.problem.h">The problem</h2>
+          <div class="figure">
+            <div class="n">1,026</div>
+            <div class="c" data-t="m.problem.fig">Children aged 10 to 18 robbed on the streets of Los
+              Angeles during school commute hours between 2020 and 2024. That
+              is 56% of all 1,838 robberies of children in that age range,
+              inside about five hours of the day.</div>
+          </div>
+          <p class="prose" data-t="m.problem.1">
+            Those robberies repeat in specific places, and every one of those
+            places is already in the public record. What no map app does is
+            route around them.
           </p>
-          <p class="prose">
-            It is not random. It repeats, and it repeats in specific places that
-            are already in the public record. Nobody routes around them.
+          <p class="prose" data-t="m.problem.2">
+            The federal Safe Routes to School program dates to 1971 and deals
+            almost entirely with cars: crosswalks, speed bumps, crossing
+            guards. Ask a student in Los Angeles what worries them on the walk
+            home and traffic is rarely the answer.
           </p>
         </div>
 
         <div class="sec">
-          <h2>What the data showed us</h2>
-          <p class="prose">
-            Splitting incidents by time of day only means something if you
-            divide by how long each window lasts — "after dark" is 12 hours and
+          <h2 data-t="m.meas.h">What we measured</h2>
+          <p class="prose" data-t="m.meas.1">
+            Splitting incidents by time of day only means something once you
+            divide by how long each window lasts. Evening covers 12 hours and
             would look worst just for being longest. Per hour:
           </p>
-          <table class="rate">
-            <tr><td>Morning <span>05–10</span></td><td>2,052</td></tr>
-            <tr class="hi"><td>Afternoon <span>10–17</span></td><td>4,246</td></tr>
-            <tr><td>After dark <span>17–05</span></td><td>3,804</td></tr>
+          <table class="data">
+            <thead><tr><th data-t="m.meas.th.w">Window</th><th data-t="m.meas.th.i">Incidents</th><th data-t="m.meas.th.h">Per hour</th></tr></thead>
+            <tbody>
+              <tr><td data-t="m.meas.r0">Morning, 5am to 10am</td><td>10,261</td><td>2,052</td></tr>
+              <tr class="mark"><td data-t="m.meas.r1">Afternoon, 10am to 5pm</td><td>29,721</td><td>4,246</td></tr>
+              <tr><td data-t="m.meas.r2">Evening, 5pm to 5am</td><td>45,652</td><td>3,804</td></tr>
+            </tbody>
           </table>
-          <p class="prose" style="margin-top:10px">
-            <strong>The walk home is the most dangerous hour of a student's
-            day</strong> — worse, hour for hour, than after dark. That is
-            exactly the 2–6 p.m. window the robbery figure points at, and we
-            did not go looking for it. It fell out of the data.
+          <p class="prose" style="margin-top:11px" data-t="m.meas.2">
+            The afternoon walk home is the worst hour of a student's day, worse
+            hour for hour than after dark. That is the same 2pm to 6pm window
+            the robbery figure points at. We were not looking for it.
           </p>
         </div>
 
         <div class="sec">
-          <h2>Why this is a transportation problem</h2>
-          <p class="prose">
-            The federal <strong>Safe Routes to School</strong> program has
-            existed since 1971 and is almost entirely about cars — crosswalks,
-            speed bumps, crossing guards. But ask an LA teenager what they are
-            actually afraid of on the walk home and they will not say traffic.
+          <h2 data-t="m.data.h">Where the data comes from</h2>
+          <ul class="plain">
+            <li data-t="m.data.1"><strong>85,634 violent incidents</strong> from the
+              <a href="https://data.lacity.org/Public-Safety/Crime-Data-from-2020-to-Present/2nrs-mtv8" target="_blank" rel="noopener">LAPD crime dataset</a>,
+              2020 through 2024.</li>
+            <li data-t="m.data.2"><strong>128,534 streetlights</strong> from the
+              <a href="https://maps.lacity.org/lahub/rest/services/Bureau_of_Street_Lighting/MapServer" target="_blank" rel="noopener">LA Bureau of Street Lighting</a>.</li>
+            <li data-t="m.data.3"><strong>668 schools</strong> from the
+              <a href="https://www.cde.ca.gov/ds/si/ds/pubschls.asp" target="_blank" rel="noopener">California Department of Education</a> directory.</li>
+            <li data-t="m.data.4"><strong>18,473 km of walkable street</strong> from
+              <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a>,
+              cut into 431,599 blocks.</li>
+            <li data-t="m.data.5"><strong>5,395 bus and rail stops</strong> from
+              <a href="https://developer.metro.net/gtfs-schedule-data/" target="_blank" rel="noopener">LA Metro's GTFS feeds</a>,
+              with ride times and headways.</li>
+          </ul>
+        </div>
+
+        <div class="sec">
+          <h2 data-t="m.threw.h">What we threw away</h2>
+          <p class="prose" data-t="m.threw.1">
+            The raw LAPD file holds roughly a million records. We keep only
+            offences that threaten someone walking down a street: robbery,
+            assault, criminal threats, brandishing a weapon. A stolen catalytic
+            converter says nothing about whether a child is safe on that block.
           </p>
-          <p class="prose">
-            Walking is the most basic mode of transport there is, and for a lot
-            of students it is the only one they have. When the walk stops
-            feeling safe, kids stop walking — which pushes them into cars, onto
-            worse schedules, or into missing school entirely. Making the walk
-            safer <em>is</em> transportation work.
+          <p class="prose" data-t="m.threw.2">
+            A second filter keeps only incidents that happened in public space,
+            meaning street, sidewalk, alley, bus stop, park, underpass. That
+            one drops about <strong>81,000 records</strong> that happened
+            indoors. Domestic violence is serious and it is also not a hazard
+            of walking past a building, so counting it would have marked
+            ordinary residential blocks as dangerous to walk through.
           </p>
         </div>
 
         <div class="sec">
-          <h2>UN Sustainable Development Goals</h2>
+          <h2 data-t="m.score.h">How a block gets scored</h2>
+          <p class="prose" data-t="m.score.1">
+            Every surviving incident is weighted by how severe it was, how
+            recently it happened (exponential decay on a 2.5 year half life),
+            and whether the victim was a child. <strong>Crimes against
+            children count triple</strong>, because a crime against a
+            13 year old tells you more about the risk to a 13 year old than a
+            crime against an adult does.
+          </p>
+          <p class="prose" data-t="m.score.2">
+            Incidents then spread out as Gaussian kernels with a 120 m
+            bandwidth. We picked 120 m to match how coarsely LAPD records
+            locations, not to suggest we know more precisely than that. Each
+            block is sampled every 25 m and scored, then ranked against every
+            other block, so 90 means the block is worse than 90% of Los
+            Angeles at that hour.
+          </p>
+          <p class="prose" data-t="m.score.3">
+            Streetlights earn a block up to 35% off its score, capped so a
+            well lit block in a bad area never comes out looking calm. Wide
+            arterials take a penalty, footpaths get a small credit.
+          </p>
+        </div>
+
+        <div class="sec">
+          <h2 data-t="m.route.h">How the route is chosen</h2>
+          <p class="prose" data-t="m.route.1">
+            Routing is A*, minimising <code>length &times; (1 + &lambda; &middot;
+            risk<sup>1.5</sup>)</code>. The three options you get are the same
+            search at three values of &lambda;. The 1.5 exponent tolerates
+            slightly elevated blocks while avoiding genuinely bad ones firmly.
+            A linear penalty gives mushy routes that dodge everything a little.
+          </p>
+          <p class="prose" data-t="m.route.2">
+            Every edge multiplier is at least 1, so straight line distance
+            never overestimates what is left to walk. The heuristic is
+            admissible and the route is provably the cheapest one, not an
+            approximation. <code>validate.py</code> checks this against
+            Dijkstra on random pairs and the costs come out identical.
+          </p>
+          <p class="prose" data-t="m.route.3">
+            Riding a bus is scored differently: minutes on board are minutes
+            off the street, so they carry no exposure at all. Waiting does.
+            A minute at a stop is charged like 80 m of walking on that block,
+            because standing still on a bad corner is not a safe place to be.
+          </p>
+          <p class="prose" data-t="m.route.4">
+            All of it runs in this browser. The scored graph is built offline
+            and shipped as a 5 MB binary, so there is no server behind this
+            page and no cost to running it. Once the page has loaded, it keeps
+            working without a connection.
+          </p>
+        </div>
+
+        <div class="sec">
+          <h2 data-t="m.sdg.h">Development goals</h2>
           <div class="sdg">
-            <div class="sdg-item"><span class="sdg-num">11</span><div>
-              <b>Sustainable Cities &amp; Communities</b>
-              <span>Target 11.2 — safe, accessible transport for all, with
-              attention to children. Target 11.7 — safe public spaces.</span>
+            <div><span class="g">11</span><div data-t="m.sdg.11">
+              <b>Sustainable cities and communities</b>
+              <span>Target 11.2 asks for safe transport with attention to
+              children. Target 11.7 asks for safe public space.</span>
             </div></div>
-            <div class="sdg-item"><span class="sdg-num">4</span><div>
-              <b>Quality Education</b>
-              <span>Target 4.a — safe learning environments. A commute a child
-              is afraid to make is a barrier to attending school at all.</span>
+            <div><span class="g">4</span><div data-t="m.sdg.4">
+              <b>Quality education</b>
+              <span>Target 4.a asks for safe learning environments. A commute a
+              child is scared to make keeps them out of school.</span>
             </div></div>
-            <div class="sdg-item"><span class="sdg-num">16</span><div>
-              <b>Peace, Justice &amp; Strong Institutions</b>
-              <span>Target 16.2 — end violence against children, using the
-              public data institutions already publish.</span>
+            <div><span class="g">16</span><div data-t="m.sdg.16">
+              <b>Peace, justice and strong institutions</b>
+              <span>Target 16.2 asks for an end to violence against children,
+              here using records those institutions already publish.</span>
             </div></div>
-            <div class="sdg-item"><span class="sdg-num">10</span><div>
-              <b>Reduced Inequalities</b>
-              <span>The students with no car and no ride are the ones exposed
-              to this risk. They are the ones this routes for.</span>
+            <div><span class="g">10</span><div data-t="m.sdg.10">
+              <b>Reduced inequalities</b>
+              <span>The students carrying this risk are the ones without a car
+              or a ride. They are who this routes for.</span>
             </div></div>
           </div>
         </div>
 
         <div class="sec">
-          <h2>Why it scales globally</h2>
-          <p class="prose">
-            Nothing here is specific to Los Angeles except one bounding box in
-            <code>config.py</code>. The pipeline needs three public inputs:
-            geocoded incident reports, school locations, and OpenStreetMap —
-            and OSM already covers the entire planet.
-          </p>
-          <p class="prose">
-            Hundreds of cities publish compatible open incident data on Socrata
-            and ArcGIS portals, including <strong>Chicago, New York, Seattle,
-            Denver, Austin, Baltimore, Toronto and London</strong>. Pointing
-            this at any of them is a configuration change, not a rewrite. There
-            is no backend and no per-user cost, so a city can stand up its own
-            copy for the price of static hosting: nothing.
-          </p>
-        </div>
-      </div>
-
-      <!-- --------------------------------------------------------- HOW -->
-      <div class="pane" id="p-how">
-        <div class="sec">
-          <h2>Data</h2>
-          <p class="srcs">
-            <a href="https://data.lacity.org/Public-Safety/Crime-Data-from-2020-to-Present/2nrs-mtv8" target="_blank" rel="noopener">LAPD Crime Data 2020–2024</a> — 85,634 incidents<br>
-            <a href="https://maps.lacity.org/lahub/rest/services/Bureau_of_Street_Lighting/MapServer" target="_blank" rel="noopener">LA Bureau of Street Lighting</a> — 128,534 lamps<br>
-            <a href="https://www.cde.ca.gov/ds/si/ds/pubschls.asp" target="_blank" rel="noopener">CA Dept. of Education</a> — 668 schools<br>
-            <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a> — walkable street network
+          <h2 data-t="m.next.h">Where it runs next</h2>
+          <p class="prose" data-t="m.next.1">
+            One bounding box in <code>config.py</code> is the only Los Angeles
+            specific thing here. The pipeline needs geocoded incident records,
+            school locations, and OpenStreetMap, which already covers the
+            planet. Chicago, New York, Seattle, Denver, Austin, Baltimore,
+            Toronto and London all publish incident data in a compatible
+            shape, so pointing this at one of them is configuration rather than
+            a rewrite.
           </p>
         </div>
 
         <div class="sec">
-          <h2>What we filter out, and why</h2>
-          <p class="prose">
-            The raw LAPD feed has roughly a million records. We keep only
-            incidents that describe a threat to someone <strong>walking down a
-            street</strong> — robbery, assault, ADW, criminal threats,
-            brandishing. Property crime and fraud are dropped: a stolen
-            catalytic converter says nothing about whether a child is safe.
-          </p>
-          <p class="prose">
-            Then a <strong>premise filter</strong> keeps only street, sidewalk,
-            alley, bus stop, park and underpass. This drops about
-            <strong>81,000</strong> incidents that happened indoors. Domestic
-            violence is real and serious, but it is not a walking-route hazard,
-            and including it would systematically mislabel dense residential
-            neighbourhoods as dangerous to walk through.
-          </p>
-        </div>
-
-        <div class="sec">
-          <h2>The risk model</h2>
-          <p class="prose">
-            Each surviving incident is weighted
-            <code>severity × juvenile × recency</code>. Armed robbery counts
-            2.5×, assault with a deadly weapon 3×, a verbal threat 1×. Recency
-            decays exponentially on a 2.5-year half-life.
-          </p>
-          <p class="prose">
-            <strong>Crimes against children count triple.</strong> A crime
-            against a 13-year-old predicts danger to a 13-year-old far better
-            than a crime against an adult does — that weighting is the single
-            biggest thing separating this from a generic crime map.
-          </p>
-          <p class="prose">
-            Incidents are split into three time buckets and spread as
-            <strong>Gaussian kernels</strong> with a 120 m bandwidth, chosen to
-            match the block-level uncertainty in LAPD's geocoding rather than
-            to imply precision we do not have. Every block is sampled every
-            25 m, then rank-normalised — so <code>0.9</code> means "worse than
-            90% of blocks in LA."
-          </p>
-          <p class="prose">
-            Streetlight density earns a block up to a 35% reduction, capped so
-            a well-lit block in a high-crime area never reads as safe.
-            Arterials take a penalty; footpaths get a small credit.
-          </p>
-        </div>
-
-        <div class="sec">
-          <h2>The routing</h2>
-          <p class="prose">
-            Streets are cut into blocks at genuine intersections — shared OSM
-            node IDs, not rounded coordinates — and reduced to the largest
-            connected component. Routing is <strong>A*</strong> minimising:
-          </p>
-          <p class="prose" style="text-align:center">
-            <code>length × (1 + λ · risk<sup>1.5</sup>)</code>
-          </p>
-          <p class="prose">
-            λ is the slider. The <code>1.5</code> exponent tolerates
-            mildly-elevated blocks while avoiding genuinely bad ones hard; a
-            linear penalty gives mushy routes that dodge everything slightly
-            and nothing much.
-          </p>
-          <p class="prose">
-            Because every edge multiplier is at least 1, straight-line distance
-            never overestimates the remaining cost — the heuristic is
-            <strong>admissible</strong>, so the route returned is provably
-            optimal, not approximate. It all runs in your browser: the graph is
-            precomputed offline, so there is no server to pay for.
-          </p>
-        </div>
-
-        <div class="sec">
-          <h2>Honest limitations</h2>
-          <ul class="limits">
-            <li><strong>Reported crime is not all crime.</strong> Reporting
-                rates vary by neighbourhood and immigration status, so a low
-                score can partly reflect low reporting.</li>
-            <li><strong>Locations are block-level.</strong> LAPD rounds
-                coordinates for privacy; the 120 m bandwidth matches that
-                uncertainty.</li>
-            <li><strong>Data ends December 2024</strong>, when LAPD migrated to
-                NIBRS. Complete and stable, but not live.</li>
-            <li><strong>Risk is relative to LA.</strong> A 0.2 means "quiet by
-                LA standards," not "quiet."</li>
-            <li><strong>This is a second opinion, not a guarantee.</strong> An
-                empty street the model likes may still be worse than a busy one
-                it doesn't.</li>
+          <h2 data-t="m.limits.h">What this cannot tell you</h2>
+          <ul class="plain">
+            <li data-t="m.limits.1"><strong>Reported crime is not all crime.</strong> Reporting
+              rates vary between neighbourhoods and with immigration status, so
+              a low score partly reflects who calls the police.</li>
+            <li data-t="m.limits.2"><strong>Locations are approximate.</strong> LAPD rounds
+              coordinates to protect victims, which is why the model smooths
+              over 120 m.</li>
+            <li data-t="m.limits.3"><strong>The data stops in December 2024</strong>, when LAPD
+              moved to a new records system. It is complete and stable, and it
+              is not live.</li>
+            <li data-t="m.limits.4"><strong>Scores are relative to Los Angeles.</strong> A 20 means
+              quiet by the standards of this city.</li>
+            <li data-t="m.limits.5"><strong>This is a second opinion about a walk.</strong> An
+              empty street the model likes can still be worse than a busy one
+              it marks down, and you know things about your own neighbourhood
+              that a crime table does not record.</li>
           </ul>
+        </div>
+
+        <div class="sec">
+          <h2 data-t="m.about.h">About this project</h2>
+          <p class="prose" data-t="m.about.1">
+            Built by three Los Angeles students. It placed third in the Young
+            Coders' Sphere Code for Transportation challenge in August 2026,
+            and has kept growing since: Spanish, bus and rail, a school report,
+            printable walking cards, and a version that works offline.
+            The code is open at
+            <a href="https://github.com/safe-routes-la/safe-routes-la.github.io" target="_blank" rel="noopener">github.com/safe-routes-la</a>.
+          </p>
         </div>
       </div>
     </div>
@@ -528,27 +825,29 @@
   <div id="mapwrap">
     <div id="map"></div>
     <div class="toast" id="toast"></div>
-    <div id="zoomhint">Zoom in to see the risk heatmap</div>
+    <div id="hint" data-t="hint">Zoom in to see how individual blocks score</div>
     <div id="legend">
-      <h4>Street risk — <span id="lg-time">morning</span></h4>
-      <div class="ramp"></div>
-      <div class="ramp-ends"><span>elevated</span><span>worst in LA</span></div>
-      <div style="font-size:10px;color:var(--ink-faint);margin-top:3px">
-        <span id="lg-count">—</span> blocks above the safe baseline
-      </div>
-      <div style="height:9px"></div>
-      <div class="lg"><i style="background:var(--safe)"></i> Safest route</div>
-      <div class="lg"><i class="dash"></i> Shortest route</div>
+      <h4><span data-t="lg.h">Block risk</span> / <b id="lg-when">afternoon</b></h4>
+      <div class="scale" id="lg-scale"></div>
+      <div class="scale-ends"><span data-t="lg.calm">calmer</span><span data-t="lg.worst">worst in LA</span></div>
+      <div class="lg"><i style="background:#3c7a4e"></i> <span data-t="lg.chosen">Chosen route</span></div>
+      <div class="lg"><i style="background:#211f18"></i> <span data-t="lg.short">Shortest route</span></div>
+      <div class="cnt"><span id="lg-count">0</span> <span data-t="lg.drawn">blocks drawn</span></div>
     </div>
-    <div id="loading">
-      <div class="spin"></div>
-      <p id="load-msg">Loading the street network…</p>
-      <small id="load-sub">85,634 incidents · 128,534 streetlights</small>
+    <div id="boot">
+      <p id="boot-msg" data-t="boot.msg">Loading the street network</p>
+      <div class="bar"><i id="boot-bar"></i></div>
+      <small id="boot-sub">85,634 incidents / 128,534 streetlights</small>
     </div>
   </div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Filled in when a route is printed. Hidden on screen, the only thing on paper. -->
+<div id="printcard"></div>
+
+<!-- Leaflet 1.9.4, vendored so the offline copy does not depend on a CDN. -->
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="es.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

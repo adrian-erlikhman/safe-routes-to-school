@@ -1,89 +1,78 @@
-# YCS "Code for Transportation" — submission answers
+# YCS "Code for Transportation" submission
 
-Fill in team name / members, then paste the rest into the Google Form.
+Fill in the team name and members, then paste the rest into the form.
+
+- Live site: https://safe-routes-la.github.io
+- Code: https://github.com/safe-routes-la/safe-routes-la.github.io
+- Video script and shot list: `VIDEO.md`
 
 ---
 
 ## Team name
-`<fill in>`
+
+`fill in`
 
 ## Team members
-`<fill in>`
 
----
+Adrian Erlikhman, Michael `<surname>`
 
 ## Project description
 
-**Safe Routes to School — risk-aware walking directions for LA students**
+**Safe Routes to School** / https://safe-routes-la.github.io
 
-Between 2020 and 2024, 1,838 children aged 10–18 were robbed on the streets of
-Los Angeles. 1,026 of them — 56% — were robbed during school commute hours.
-Every mapping app in the world will give a kid the shortest way to school. None
-of them will give them the safest one.
+Between 2020 and 2024, 1,838 children aged 10 to 18 were robbed on the streets
+of Los Angeles, and 1,026 of those robberies happened during school commute
+hours. That is 56% of them inside five hours of the day, on blocks the city
+already publishes in its open data. No map app routes around them. Ours does.
+You pick a school, type your address, and get three routes with the reasoning
+written out: skips 552 m of South Fairfax Avenue, which scores 65 at this hour,
+goes along Venice Boulevard instead at 20, costs you three minutes, halves your
+total exposure. You can check that rather than having to trust it.
 
-We built the one that does.
+Buses change the problem, because minutes on board are minutes off the street.
+Exposition and Normandie up to LACES is 118 minutes and 9.3 km of sidewalk on
+foot, against 40 minutes and 750 m of walking on Route 206 changing to Route
+33, which cuts exposure by 80%. We plan one transfer and charge for waiting,
+since a minute at a stop costs the same as 80 m of walking there. Splitting by
+hour also turned up something we were not looking for: per hour the afternoon
+walk home is worse than after dark, 4,246 incidents against 3,804, so the most
+dangerous hour of a student's day is the one nobody supervises.
 
-Pick a school and a starting point, and the app computes two walking routes: the
-shortest one, and the one that minimises exposure to violent street crime. Then
-it tells you what the tradeoff actually costs — *"walking 4 minutes longer cuts
-your exposure by 61%."*
+Underneath are 85,634 violent incidents, 128,534 streetlights, 5,395 transit
+stops and 431,599 scored blocks, though most of the judgement went into
+filtering rather than the maths. We keep only offences that threaten someone
+walking, and only those in public space, which drops 81,000 indoor incidents.
+Domestic violence is serious and is also not a hazard of walking past a
+building, so counting it would have branded ordinary residential neighbourhoods
+dangerous and damaged the places this is meant to help. Crimes against children
+count triple. Routing is A* minimising length times (1 + lambda times risk to
+the 1.5), and because every block multiplier is at least 1 the straight line
+heuristic is admissible, making each route provably the cheapest rather than a
+good guess. `validate.py` confirms that against Dijkstra.
 
-**How it works.** We pulled 85,634 violent-crime incidents from the LAPD open
-data portal, 128,534 streetlight locations from the LA Bureau of Street
-Lighting, 668 school locations from the California Department of Education, and
-the full walkable street network of central Los Angeles from OpenStreetMap.
-
-The filtering is where most of the thinking went. Out of roughly a million raw
-LAPD records we keep only incidents that describe a threat to someone *walking
-down a street* — robbery, assault, threats, brandishing — and only those that
-occurred in public pedestrian space. That premise filter alone drops ~81,000
-incidents that happened inside homes. Domestic violence is real and serious, but
-it is not a walking-route hazard, and including it would have mislabelled dense
-residential neighbourhoods as dangerous to walk through.
-
-Each surviving incident is weighted by severity, by recency (2.5-year
-exponential half-life), and — critically — by whether the victim was a child.
-A crime against a 13-year-old predicts danger to a 13-year-old better than a
-crime against an adult does, so juvenile-victim incidents count triple.
-
-Incidents are split into three time-of-day buckets and spread as Gaussian
-kernels with a 120 m bandwidth, chosen to match the block-level uncertainty in
-LAPD's geocoding rather than to imply precision we don't have. Every street
-segment is sampled every 25 m and scored, then rank-normalised, so a score of
-0.9 means "worse than 90% of blocks in LA" — something a parent can act on.
-Streetlight density earns a block up to a 35% risk reduction; arterial roads
-take a penalty.
-
-Routing is A\* run entirely in the browser, minimising
-`length × (1 + λ · risk^1.5)`, where λ is a slider the user controls from
-"shortest walk" to "safest walk." Because every edge multiplier is at least 1,
-straight-line distance is an admissible heuristic — so the route returned is
-provably optimal, not an approximation. There is no backend: the graph is
-precomputed offline, so the whole thing deploys as static files and costs
-nothing to run.
-
-**Why it matters for transportation.** The federal Safe Routes to School program
-has existed since 1971 and is almost entirely about cars — crosswalks, speed
-bumps, crossing guards. But ask an LA teenager what they're actually afraid of
-on the walk home and they won't say traffic. Walking is the most basic mode of
-transportation there is, and for a lot of students it's the only one they have.
-If the walk doesn't feel safe, kids stop walking — which pushes them into cars,
-onto worse schedules, or into missing school. Making the walk safer is a
-transportation problem, and it's one that public data can actually solve.
-
-The same pipeline runs on any city that publishes geocoded incident data.
+There is no server behind any of it. The graph is built offline and packed into
+a 5 MB binary, so the router runs in your browser and the site costs nothing to
+host, which puts a copy within reach of any city. One bounding box in a config
+file is the only Los Angeles specific thing here, and Chicago, Seattle, Toronto
+and London publish compatible data. The project touches SDG 11 on safe
+transport for children, SDG 4 on safe access to education, SDG 16 on violence
+against children, and SDG 10, since the students carrying this risk are the
+ones without a car or a ride. The limits are stated in the app itself:
+reporting rates vary, locations are rounded to protect victims, and the data
+stops in December 2024. It is a second opinion about a walk, not a promise
+about one. For a lot of students walking is the only transport they have, and
+we made it safer.
 
 ---
 
 ## Video link
-`<fill in — check sharing is set to "anyone with the link">`
 
-Script and shot list: see VIDEO.md
+`fill in, and check sharing is set to anyone with the link`
 
 ## Code link
-https://github.com/adrian-erlikhman/safe-routes-to-school
 
-(Public. Live site: https://adrianerlikhman.is-a.dev/safe-routes-to-school/)
+https://github.com/safe-routes-la/safe-routes-la.github.io
 
 ## Parental consent
+
 Yes

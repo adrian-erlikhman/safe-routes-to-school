@@ -1,0 +1,17 @@
+{
+  "name": "Safe Routes to School / Los Angeles",
+  "short_name": "Safe Routes",
+  "description": "Walking and transit directions for Los Angeles students that route around the blocks where students actually get robbed.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#e8e4d6",
+  "theme_color": "#e8e4d6",
+  "lang": "en",
+  "categories": ["navigation", "education", "utilities"],
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
