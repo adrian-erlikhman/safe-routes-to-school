@@ -1,5 +1,42 @@
 # Changelog
 
+## Validation (September 2026)
+
+The model had never been tested against data it had not been fitted on. This
+round is about that, and about two bugs found while looking.
+
+- **`validate.py` was reading the wrong bytes.** It skipped the street-name
+  section entirely, so every risk statistic it printed was a name id
+  reinterpreted as a score, and it read the header as 20 bytes where the writer
+  emits 24 — which made it crash outright rather than merely lie. Both fixed;
+  it now asserts its own offsets add up to the file size, and reproduces the
+  README's table exactly.
+- **Holdout evaluation** (`pipeline/eval/holdout.py`). Fits the kernel on
+  2020–2023 and scores it against 2024 — hit rate in the worst 1/5/10% of the
+  network, PAI and ROC AUC per time window — against three baselines dumb
+  enough that beating them means something. Not yet run against Los Angeles;
+  `pipeline/eval/holdout_results.md` says so at the top rather than filling
+  itself with anything else.
+- **The evaluation is itself tested**, against synthetic fixtures with known
+  answers. One has structure to find, one has none, and CI fails if the second
+  ever stops reporting a null.
+- **Sensitivity sweep** (`pipeline/eval/sensitivity.py`). Every constant in
+  `config.py` perturbed over a plausible range, ranked by how much of the
+  safest route actually changes, against a measured noise floor. Kernel
+  bandwidth dominates everything else.
+- **The streetlight credit is no longer time-blind.** A lit block used to earn
+  the same 35% discount at noon as at midnight. It is now scaled by how much of
+  each window is dark, from NOAA sunrise and sunset over the LA school year.
+  The shipped graph has not been rebuilt, so the site still serves the old
+  surface.
+- **Sparse blocks are shrunk towards their neighbourhood** by empirical Bayes,
+  with the prior strength fitted rather than chosen. The per-block confidence
+  this produces does not fit the binary format, so it is proposed in
+  `docs/FORMAT_V3.md` instead of being slipped in.
+- **Hygiene.** Pinned `requirements.txt`, an MIT `LICENSE` with the data terms
+  spelled out, a GitHub Actions workflow, and `pipeline/check_apis.py` to say
+  which upstream is down when a build dies eight minutes in.
+
 ## After the competition (September 2026)
 
 The Code for Transportation entry was judged on 24 August 2026 and placed

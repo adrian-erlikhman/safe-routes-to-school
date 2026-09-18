@@ -19,18 +19,33 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as C
 
 MAGIC = 0x53525453
+FORMAT_VERSION = 2
+# Six uint32: magic, version, nNodes, nEdges, nGeom, nNames.
+HEADER_BYTES = 24
 
 
 def load():
     """Read graph.bin using the same section order the writer emits."""
     path = os.path.join(C.OUT, "graph.bin")
     raw = np.fromfile(path, dtype=np.uint8)
-    head = raw[:20].view(np.uint32)
+    head = raw[:HEADER_BYTES].view(np.uint32)
     if int(head[0]) != MAGIC:
         raise SystemExit("bad magic -- not a graph.bin")
+    if int(head[1]) != FORMAT_VERSION:
+        raise SystemExit(f"graph format v{int(head[1])}, expected "
+                         f"v{FORMAT_VERSION}")
     nN, nE, nG = int(head[2]), int(head[3]), int(head[4])
 
-    o = 20
+    # Every section offset is derived from the header, so a wrong header size
+    # silently shifts every array by a few bytes rather than failing loudly.
+    # Check the total instead: it only adds up when all six fields are right.
+    want = (HEADER_BYTES + nN * 8 + nE * 4 + nE * 4 + (nE + 1) * 4
+            + nG * 8 + nE * 2 + nE * 2 + nE * 3)
+    if want != raw.size:
+        raise SystemExit(f"graph.bin is {raw.size:,} bytes, header implies "
+                         f"{want:,} -- section layout has drifted")
+
+    o = HEADER_BYTES
     nodes = raw[o:o + nN * 8].view(np.int32).reshape(nN, 2) / 1e6
     o += nN * 8
     eu = raw[o:o + nE * 4].view(np.int32); o += nE * 4
@@ -38,7 +53,10 @@ def load():
     o += (nE + 1) * 4          # geom offsets -- not needed for validation
     o += nG * 8                # geom points
     ed = raw[o:o + nE * 2].view(np.uint16); o += nE * 2
+    o += nE * 2                # street-name ids -- not needed for validation
     er = raw[o:o + nE * 3].view(np.uint8).reshape(nE, 3)
+    if o + nE * 3 != raw.size:
+        raise SystemExit("risk section does not end at EOF -- layout drift")
 
     meta = json.load(open(os.path.join(C.OUT, "graph_meta.json")))
     return dict(nodes=nodes, eu=eu, ev=ev, ed=ed, er=er, meta=meta,

@@ -1,0 +1,92 @@
+name: validate
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  model:
+    name: graph + model checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # The shipped graph is committed, so this needs no downloads: it checks
+      # the binary parses, that every section ends where the header says, and
+      # that A* returns exactly Dijkstra's cost.
+      - name: validate the shipped graph
+        run: python pipeline/validate.py
+
+      # Builds a small synthetic city and runs the real build_graph over it, so
+      # a change to the risk model is exercised without the 100 MB cache.
+      - name: end-to-end build smoke test
+        run: python pipeline/eval/smoke.py
+
+      - name: build synthetic fixtures
+        run: |
+          python pipeline/eval/fixture.py --mode hotspot --n 12000 --lights 20000
+          python pipeline/eval/fixture.py --mode null --n 12000 \
+            --out .cache/crime.null.json
+
+      # Positive control: structure exists in the fixture, so the holdout has
+      # to find it. If this fails the evaluation has gone blind.
+      - name: holdout finds signal that is there
+        run: |
+          python pipeline/eval/holdout.py --fast \
+            --incidents .cache/crime.synthetic.json \
+            --out /tmp/hotspot.md --note "SYNTHETIC FIXTURE (CI)"
+          grep -q "beats both dumb baselines" /tmp/hotspot.md \
+            || { echo "::error::positive control failed -- the holdout no longer detects real structure"; cat /tmp/hotspot.md; exit 1; }
+
+      # Negative control, and the more important of the two. Nothing in the null
+      # fixture's training years predicts its test year. A report that claims a
+      # win here is a report that would rubber-stamp the real model too.
+      - name: holdout reports a null when there is nothing to find
+        run: |
+          python pipeline/eval/holdout.py --fast \
+            --incidents .cache/crime.null.json \
+            --out /tmp/null.md --note "SYNTHETIC FIXTURE (CI)"
+          grep -q "Null result" /tmp/null.md \
+            || { echo "::error::negative control failed -- the holdout claimed signal in random data"; cat /tmp/null.md; exit 1; }
+
+      - name: sensitivity sweep (reduced)
+        run: |
+          python pipeline/eval/sensitivity.py --fast \
+            --incidents .cache/crime.synthetic.json \
+            --lights .cache/streetlights.synthetic.json \
+            --out /tmp/sensitivity.md --note "SYNTHETIC FIXTURE (CI)"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-reports
+          path: |
+            /tmp/hotspot.md
+            /tmp/null.md
+            /tmp/sensitivity.md
+          if-no-files-found: warn
+
+  upstreams:
+    name: upstream APIs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Informational. Four of the five sources are public services outside this
+    # project's control, and a rate-limited Overpass mirror is not a reason to
+    # fail someone's pull request.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python pipeline/check_apis.py

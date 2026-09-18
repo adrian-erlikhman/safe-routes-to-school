@@ -22,6 +22,7 @@ from scipy.ndimage import gaussian_filter, uniform_filter, map_coordinates
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as C
 import geo
+import solar
 
 CELL = 20.0          # metres per grid cell
 SAMPLE_STEP = 25.0   # sample every block this often
@@ -58,6 +59,92 @@ ROADTYPE_PENALTY = {
     "pedestrian": -0.06, "path": -0.02, "steps": 0.0, "service": 0.02,
     "alley": 0.10, "track": 0.06, "cycleway": -0.03, "unclassified": 0.02,
 }
+
+# The five display bands the app colours blocks with. Kept here so a build can
+# report how many blocks a change actually moves, rather than reporting a mean
+# shift that nobody can see on the map.
+BANDS = [0.20, 0.40, 0.60, 0.80]
+
+# --------------------------------------------------- sparse-block shrinkage
+# A block with two incidents in its kernel and a block with forty currently get
+# the same confident percentile. They should not: the first is mostly noise.
+# Both are shrunk towards the mean of their neighbourhood, with the pull set by
+# how much evidence the block actually has.
+#
+# The neighbourhood is a ~10 minute walk. Smaller and "local mean" is just the
+# block again, which shrinks nothing; larger and it becomes the city average,
+# which would flatten genuine differences between adjacent neighbourhoods.
+LOCAL_MEAN_RADIUS_M = 800.0
+
+# Prior strength is estimated from the data by moments rather than chosen, so
+# this pair is only a sanity clamp on that estimate. Below ~0.5 effective
+# incidents the shrinkage does nothing; above ~50 it would overwhelm even
+# well-evidenced blocks.
+SHRINK_K_BOUNDS = (0.5, 50.0)
+
+
+def bucket_hours_list(bucket):
+    """The clock hours a bucket covers, derived from its own predicate."""
+    return [h for h in range(24) if BUCKETS[bucket](h)]
+
+
+def dark_fractions(hour_hist):
+    """Share of each bucket's incidents that happen after dark, school year.
+
+    Weighted by when incidents actually occur rather than by clock hours: the
+    credit scales a risk score, and risk sits where the incidents are. The
+    5 a.m. hour is dark for most of the school year but carries few incidents,
+    so weighting by the clock alone would overstate what lighting can do to the
+    morning walk.
+    """
+    lat = (C.BBOX["south"] + C.BBOX["north"]) / 2.0
+    lon = (C.BBOX["west"] + C.BBOX["east"]) / 2.0
+    return {b: solar.dark_fraction(bucket_hours_list(b), lat, lon, hour_hist)
+            for b in BUCKET_ORDER}
+
+
+def shrink_to_local_mean(score, n_eff, local):
+    """Empirical-Bayes shrinkage of a block's rate towards its neighbourhood.
+
+    Each block's kernel score is a noisy estimate of a real local rate. How
+    noisy depends on how many incidents are behind it: a weighted sum of n
+    draws has a relative standard error of about 1/sqrt(n), whatever the
+    weights are in. So the whole estimate is done on the *relative* scale,
+    which keeps it dimensionless and independent of how the severity weights
+    happen to be scaled:
+
+        observed spread   mean(((s - m) / m)^2)      -- real differences + noise
+        sampling noise    mean(1 / n_eff)            -- noise alone
+        prior variance    the first minus the second -- real differences alone
+        k                 1 / prior variance         -- effective incidents
+                                                        needed to outweigh the
+                                                        neighbourhood
+
+    and the posterior weight on the block's own evidence is n / (n + k). Both
+    quantities are estimated from the data by moments rather than chosen, which
+    is the point: this is meant to remove a hand-set constant, not add one.
+
+    Returns (shrunk score, confidence in 0..1, fitted k).
+    """
+    # Blocks in genuinely empty parts of the map have a local mean near zero,
+    # where a relative residual is meaningless and numerically explosive. Fit
+    # the moments on the blocks that carry the distribution and apply the
+    # result everywhere.
+    floor = max(np.percentile(local, 10), 1e-12)
+    fit = (local > floor) & (n_eff > 0)
+    m = np.maximum(local, floor)
+    if fit.sum() >= 100:
+        rel = (score[fit] - m[fit]) / m[fit]
+        total_var = float(np.mean(rel * rel))
+        noise_var = float(np.mean(1.0 / np.maximum(n_eff[fit], 1e-6)))
+        prior_var = max(total_var - noise_var, 1e-6)
+        k = float(np.clip(1.0 / prior_var, *SHRINK_K_BOUNDS))
+    else:
+        # Too little to fit on: shrink as little as the clamp allows rather
+        # than inventing a prior.
+        k = SHRINK_K_BOUNDS[0]
+    conf = n_eff / (n_eff + k)
+    return conf * score + (1.0 - conf) * m, conf, k
 
 
 # --------------------------------------------------------------------- grids
@@ -272,7 +359,7 @@ def simplify(pts, tol):
 
 
 # ------------------------------------------------------------------- main
-def main():
+def main(sidecar=False):
     print("loading OSM...", flush=True)
     nodes, edges = build_edges()
     print(f"  {len(edges):,} raw edges", flush=True)
@@ -293,17 +380,42 @@ def main():
     print(f"  raster {grid.nx} x {grid.ny} cells @ {CELL:.0f} m", flush=True)
     sigma_cells = C.KERNEL_BANDWIDTH_M / CELL
 
-    raw_scores = {}
+    raw_scores, unshrunk, confidence = {}, {}, {}
+    local_sigma = LOCAL_MEAN_RADIUS_M / CELL
     for b in BUCKET_ORDER:
         m = np.fromiter((BUCKETS[b](int(h)) for h in chour), bool, len(chour))
         dens = gaussian_filter(grid.rasterise(cx[m], cy[m], cw[m]),
                                sigma=sigma_cells, mode="constant")
         vals = grid.sample(dens, sx, sy)
         # Per-hour rate, so a 12-hour bucket is not penalised for its length.
-        raw_scores[b] = per_edge_mean(vals, offsets) / BUCKET_HOURS[b]
+        score = per_edge_mean(vals, offsets) / BUCKET_HOURS[b]
+        unshrunk[b] = score
+
+        # How much evidence is actually behind that number. The same kernel run
+        # over unweighted counts gives a density; scipy normalises the kernel to
+        # sum to one over cells, so multiplying by its effective cell area turns
+        # that back into "incidents within about one bandwidth of here".
+        ones = gaussian_filter(grid.rasterise(cx[m], cy[m], np.ones(int(m.sum()))),
+                               sigma=sigma_cells, mode="constant")
+        n_eff = (per_edge_mean(grid.sample(ones, sx, sy), offsets)
+                 * (2.0 * np.pi * sigma_cells * sigma_cells))
+
+        # The neighbourhood this block is shrunk towards.
+        local = (per_edge_mean(grid.sample(
+            gaussian_filter(dens, sigma=local_sigma, mode="constant"), sx, sy),
+            offsets) / BUCKET_HOURS[b])
+
+        raw_scores[b], confidence[b], k = shrink_to_local_mean(score, n_eff, local)
+        # Mean absolute change against the mean score. Per-block relative
+        # change would divide by the near-zero scores of empty blocks and
+        # report a meaningless number in the millions of percent.
+        moved = (float(np.mean(np.abs(raw_scores[b] - score)))
+                 / max(float(np.mean(score)), 1e-12))
         print(f"  bucket {b:5}: {int(m.sum()):,} incidents over "
-              f"{BUCKET_HOURS[b]:.0f}h = {m.sum()/BUCKET_HOURS[b]:,.0f}/hour",
-              flush=True)
+              f"{BUCKET_HOURS[b]:.0f}h = {m.sum()/BUCKET_HOURS[b]:,.0f}/hour"
+              f"  | n_eff median {np.median(n_eff):.1f}"
+              f"  shrink k={k:.1f} conf median {np.median(confidence[b]):.2f}"
+              f"  moved {100*moved:.1f}%", flush=True)
 
     # ---------------------------------------------------------- lighting
     lights = load_lights()
@@ -321,6 +433,16 @@ def main():
               f"within {C.LIGHT_RADIUS_M:.0f} m of a block", flush=True)
     else:
         print("  streetlights: unavailable, skipping credit", flush=True)
+
+    # A streetlight cannot make 11 a.m. safer. The credit used to be applied
+    # identically to all three windows, which quietly handed every lit block a
+    # 35% discount at noon -- a protective effect the lamp was not providing.
+    # Scale it by how much of each window is actually dark, from NOAA sunrise
+    # and sunset over the Los Angeles school year, weighted by the hours
+    # incidents really fall in. See pipeline/solar.py for the assumptions.
+    dark = dark_fractions(np.bincount(chour, minlength=24).astype(float))
+    print("  dark fraction: " + "  ".join(
+        f"{b}={dark[b]:.2f}" for b in BUCKET_ORDER), flush=True)
 
     # ------------------------------------------- normalise to a 0..1 risk
     # Rank-normalise: absolute kernel values are unitless, but "this block is
@@ -340,11 +462,27 @@ def main():
     ppct = ppct ** 1.6
 
     n_e = len(edges)
-    risk = {}
+    risk, risk_timeblind = {}, {}
     pen = np.array([ROADTYPE_PENALTY.get(e[3], 0.0) for e in edges])
     for k, b in enumerate(BUCKET_ORDER):
         pct = ppct[k * n_e:(k + 1) * n_e]
-        risk[b] = np.clip(pct * (1.0 - light_credit) + pen, 0.0, 1.0)
+        risk[b] = np.clip(pct * (1.0 - light_credit * dark[b]) + pen, 0.0, 1.0)
+        # The same surface under the old time-blind rule, so the build can say
+        # what this one fix moved rather than leaving it to be taken on trust.
+        risk_timeblind[b] = np.clip(pct * (1.0 - light_credit) + pen, 0.0, 1.0)
+
+    print("\n  lighting fix, blocks changing display band:", flush=True)
+    total_moved = 0
+    for b in BUCKET_ORDER:
+        was = np.digitize(risk_timeblind[b], BANDS)
+        now = np.digitize(risk[b], BANDS)
+        moved = int((was != now).sum())
+        total_moved += moved
+        up = int((now > was).sum())
+        print(f"    {b:5} {moved:7,} of {n_e:,} blocks "
+              f"({100*moved/n_e:4.1f}%), {up:,} into a worse band "
+              f"(credit x{dark[b]:.2f})", flush=True)
+    print(f"    total {total_moved:,} block-windows changed band", flush=True)
 
     # ------------------------------------------------------------- emit
     sorted_keep = sorted(keep)
@@ -466,6 +604,34 @@ def main():
         f.write(ename.tobytes())       # uint16 nEdges
         f.write(er.tobytes())          # uint8  nEdges * 3
 
+    # Confidence does not fit the shipped format. graph.bin v2 is a fixed set of
+    # sections with every offset derived from the header, and the browser
+    # rejects any version it does not know, so adding a per-block byte is a
+    # format change that needs the reader changed with it -- not something to
+    # slip in. The proposal is written up in docs/FORMAT_V3.md; until it is
+    # taken, the numbers are summarised here and the full array is available
+    # behind --confidence-sidecar for anyone who wants to look at it.
+    conf_stats = {b: dict(
+        median=round(float(np.median(confidence[b])), 3),
+        p10=round(float(np.percentile(confidence[b], 10)), 3),
+        p90=round(float(np.percentile(confidence[b], 90)), 3),
+        below_half=int((confidence[b] < 0.5).sum()),
+    ) for b in BUCKET_ORDER}
+    for b in BUCKET_ORDER:
+        c = conf_stats[b]
+        print(f"   {b:5} confidence: median {c['median']:.2f}  "
+              f"p10 {c['p10']:.2f}  {c['below_half']:,} blocks under 0.5 "
+              f"(mostly their neighbourhood's score, not their own)")
+
+    if sidecar:
+        cpath = os.path.join(C.OUT, "confidence.bin")
+        arr = np.empty((n_e, 3), dtype=np.uint8)
+        for k, b in enumerate(BUCKET_ORDER):
+            arr[:, k] = np.round(confidence[b] * 255).astype(np.uint8)
+        arr.tofile(cpath)
+        print(f"  wrote {cpath} ({arr.nbytes/1e6:.1f} MB) -- "
+              f"proposed v3 section, not read by the site")
+
     meta = {
         "buckets": BUCKET_ORDER,
         "bucket_hours": [BUCKET_HOURS[b] for b in BUCKET_ORDER],
@@ -477,6 +643,8 @@ def main():
         "bandwidth_m": C.KERNEL_BANDWIDTH_M,
         "km": round(float(lengths.sum() / 1000), 1),
         "names": len(name_list),
+        "dark_fraction": {b: round(dark[b], 3) for b in BUCKET_ORDER},
+        "confidence": conf_stats,
         "bbox": C.BBOX,
     }
     with open(os.path.join(C.OUT, "graph_meta.json"), "w") as f:
@@ -504,4 +672,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--confidence-sidecar", action="store_true",
+                    help="also write data/confidence.bin (proposed v3 section, "
+                         "see docs/FORMAT_V3.md); the site does not read it")
+    main(sidecar=ap.parse_args().confidence_sidecar)

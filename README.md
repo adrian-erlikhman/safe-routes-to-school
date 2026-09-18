@@ -248,6 +248,104 @@ And that the windows are substantive. Morning and evening risk correlate at
 0.90, but 78,669 blocks differ by more than 0.15 between them, which is more
 than enough to change a route.
 
+## Validation
+
+**In one sentence: this model has been shown to produce provably optimal routes
+under its own definition of risk, and has not been shown to predict where crime
+happens.**
+
+That distinction is the whole of this section. Everything above proves the
+search is correct. None of it tests the thing the search is searching over,
+because exposure is *defined* by the risk surface — "the safer route has lower
+exposure" is true by construction, and a surface of random numbers would pass
+it exactly as well.
+
+### The holdout
+
+| | |
+|---|---|
+| Design | Fit the kernel on 2020–2023 only, score how well it ranks blocks by where 2024 incidents actually happened |
+| Primary outcome | Juvenile-victim street offences, 2024 |
+| Baselines | Uniform risk · unsmoothed incident count · 2023 count alone |
+| Reported | Hit rate in the worst 1/5/10% of the network by length, PAI, ROC AUC, per time window |
+| **Result** | **Not yet run against Los Angeles.** `.cache/crime.json` is gitignored, and `data.lacity.org` was unreachable from the environment this was built in |
+
+The table is empty and that is the finding, not an omission — see
+[`pipeline/eval/holdout_results.md`](pipeline/eval/holdout_results.md), which
+says so at the top and refuses to fill itself with anything else. Two commands
+produce the real version:
+
+```bash
+python pipeline/fetch_crime.py && python pipeline/eval/holdout.py
+```
+
+What *has* been checked is the evaluation itself, against two synthetic
+fixtures with known answers, on every push:
+
+| Fixture | Should find | Verdict returned |
+|---|---|---|
+| 220 persistent hotspots | signal | beats both baselines in 3/3 windows, AUC 0.786–0.804 |
+| incidents at random | nothing | *"Null result: the model does not beat the dumb baselines"* |
+
+The negative control earns its keep. An earlier version of the verdict compared
+AUCs against a flat margin and called a coin flip a win; the threshold now has
+to clear twice the standard error of the difference, and CI fails if that
+fixture ever stops reporting a null.
+
+### Which constants actually matter
+
+Every constant perturbed over a range a reasonable person might have picked
+instead, measured by how much of the safest route changes over 200 school-bound
+trips. Perturbing the bandwidth by 1% — a change nobody would argue about —
+moves 1.4% of route length, so that is the noise floor.
+
+| | Worst-case route change | |
+|---|---|---|
+| `KERNEL_BANDWIDTH_M` | 56% | the least defensible number in `config.py` |
+| `JUVENILE_WEIGHT` | 30% | |
+| `ppct ** 1.6` | 25% | correlates 0.999 with baseline and still moves a quarter of the route |
+| `RECENCY_HALFLIFE_YEARS` | 24% | |
+| `risk ** 1.5` routing exponent | 13% | measured on the real shipped surface |
+| *control: 1% bandwidth* | *1.4%* | *noise floor* |
+
+Nothing on that list is decoration, which is the uncomfortable reading: the
+recommendation turns on seven numbers chosen by judgement, and the holdout that
+would test any of them has not been run. Full table and caveats — most of the
+sweep runs on a synthetic fixture — in
+[`pipeline/eval/sensitivity_results.md`](pipeline/eval/sensitivity_results.md).
+
+### Two fixes that came out of writing this
+
+**`validate.py` was reading the wrong bytes.** It skipped the street-name
+section, so every risk figure it printed was a name id reinterpreted as a
+score, and it took the header as 20 bytes where the writer emits 24. The second
+made it crash outright; the first made it confidently wrong. It now checks that
+its own offsets add up to the file size, and reproduces the table above exactly.
+
+**The streetlight credit was time-blind.** A lit block earned the same 35%
+discount at noon as at midnight. The credit is now scaled by how much of each
+window is actually dark, from NOAA sunrise and sunset over the LA school year,
+weighted by the hours incidents really fall in:
+
+| Window | Dark fraction | Credit |
+|---|---|---|
+| am, 5–10 | 0.19 | reduced to a fifth |
+| pm, 10–17 | 0.00 | removed entirely |
+| night, 17–5 | 0.85 | mostly kept |
+
+`build_graph.py` reports how many blocks change display band on the next build.
+`data/graph.bin` has **not** been rebuilt — that needs the source cache — so the
+graph the site currently serves still carries the old time-blind credit.
+
+### Sparse blocks
+
+A block with two nearby incidents used to get the same confident percentile as
+one with forty. Scores are now shrunk towards their neighbourhood mean by
+empirical Bayes, with the pull set by the effective incident count and the prior
+strength fitted from the data rather than chosen. The resulting per-block
+confidence does not fit the shipped binary format, so it is proposed rather than
+slipped in: [`docs/FORMAT_V3.md`](docs/FORMAT_V3.md).
+
 ## Running it
 
 ```bash
@@ -296,10 +394,21 @@ pipeline/
   fetch_lights.py         streetlights through the city's ArcGIS MapServer
   fetch_schools.py        the state school directory
   fetch_osm.py            walkable streets, tiled across Overpass mirrors
+  fetch_transit.py        LA Metro GTFS reduced to stops, ride times, headways
   geo.py                  local planar projection
+  solar.py                sunrise, sunset, and how dark each window really is
   build_graph.py          intersection splitting, risk model, binary packing
   validate.py             graph checks and the A* optimality proof
-  fetch_transit.py        LA Metro GTFS reduced to stops, ride times, headways
+  check_apis.py           are the five upstream services still answering
+  eval/
+    common.py             graph reader, kernel refit, metrics, shared by both
+    holdout.py            fit on 2020-23, score against 2024, beat the baselines
+    sensitivity.py        which constants move the recommendation
+    fixture.py            synthetic incidents with a known answer, for testing
+    smoke.py              end-to-end build on a small synthetic city
+    *_results.md          what those two scripts last found
+docs/FORMAT_V3.md         proposed per-block confidence byte, not yet taken
+.github/workflows/        validate.py, the smoke test, and both eval controls
 ```
 
 ## What this cannot tell you
