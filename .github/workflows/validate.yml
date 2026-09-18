@@ -80,13 +80,16 @@ jobs:
     name: upstream APIs
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Informational. Four of the five sources are public services outside this
-    # project's control, and a rate-limited Overpass mirror is not a reason to
-    # fail someone's pull request.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: python pipeline/check_apis.py
+
+      # Informational, and deliberately not a failing check. Every source here
+      # is a public service outside this project's control, and a rate-limited
+      # Overpass mirror is not a reason to fail someone's pull request -- a job
+      # that goes red for reasons the author cannot fix teaches people to
+      # ignore red. Anything down is raised as an annotation and written to the
+      # run summary instead. Run it without --warn-only locally and it exits 1.
+      - run: python pipeline/check_apis.py --warn-only --github-summary

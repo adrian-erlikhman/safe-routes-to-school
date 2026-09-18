@@ -19,7 +19,10 @@ import urllib.error, urllib.parse, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as C
 
-TIMEOUT = 30
+# Overpass status endpoints answer slowly when an instance is busy, and a
+# timeout here would read as "down" when the real fetch (which allows 300 s)
+# would have succeeded. 45 s is long enough to tell busy from broken.
+TIMEOUT = 45
 
 # Overpass mirrors are listed in fetch_osm.py; keep them in step by importing
 # rather than copying, so a mirror added there is probed here automatically.
@@ -49,7 +52,10 @@ def probe(name, url, check=None, method="GET", head_bytes=4096):
                 ok, detail = check(body)
                 rec["ok"], rec["detail"] = ok, detail
             elif rec["ok"]:
-                rec["detail"] = f"{len(body):,} bytes"
+                # A HEAD has no body, so report what the server declares.
+                size = r.headers.get("content-length")
+                rec["detail"] = (f"{int(size)/1e6:.1f} MB" if size
+                                 else f"{len(body):,} bytes")
     except urllib.error.HTTPError as e:
         rec["status"] = e.code
         rec["detail"] = f"HTTP {e.code} {e.reason}"
@@ -109,6 +115,12 @@ def tab_header(body):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--warn-only", action="store_true",
+                    help="always exit 0; these are third-party services and "
+                         "one being down is not a broken pull request")
+    ap.add_argument("--github-summary", action="store_true",
+                    help="write a table to $GITHUB_STEP_SUMMARY and raise a "
+                         "workflow annotation for anything not answering")
     a = ap.parse_args()
 
     checks = []
@@ -157,7 +169,37 @@ def main():
                   "probably fine and the egress policy is not.")
         else:
             print("\nall upstreams answering -- a full build should fetch cleanly")
-    return 1 if bad else 0
+
+    if a.github_summary:
+        summary(results, bad)
+    return 0 if a.warn_only else (1 if bad else 0)
+
+
+def summary(results, bad):
+    """A table in the run summary, and one annotation per upstream that is down.
+
+    An informational job that goes red teaches people to ignore red, so this
+    reports through annotations instead: visible on the run, not a failed check.
+    """
+    lines = ["## Upstream data sources", "",
+             "| Upstream | | Time | Detail |", "|---|---|---|---|"]
+    for r in results:
+        lines.append(f"| {r['name']} | {'ok' if r['ok'] else '**down**'} | "
+                     f"{r['ms']:,} ms | {r['detail'] or ''} |")
+    if bad:
+        lines += ["", f"**{len(bad)} not answering.** These are third-party "
+                      f"services outside this repository's control; a build "
+                      f"would fail at the matching `fetch_*` step until they "
+                      f"recover."]
+    else:
+        lines += ["", "All answering. A full build should fetch cleanly."]
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if path:
+        with open(path, "a") as f:
+            f.write("\n".join(lines) + "\n")
+    for r in results:
+        if not r["ok"]:
+            print(f"::warning title=Upstream down::{r['name']}: {r['detail']}")
 
 
 if __name__ == "__main__":

@@ -31,8 +31,12 @@ MIRRORS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
-    "https://overpass.osm.jp/api/interpreter",
 ]
+# overpass.osm.jp was dropped from this list: it serves a certificate that is
+# not valid for its own hostname, so every request to it fails TLS verification
+# rather than merely being slow. A mirror that cannot be reached is worse than
+# one that is missing, because the rotation spends a retry on it.
+# `python pipeline/check_apis.py` probes whatever is in this list.
 
 
 def fetch_tile(s, w, n, e, idx):
