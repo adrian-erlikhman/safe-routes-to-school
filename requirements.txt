@@ -1,0 +1,12 @@
+# Pinned, because the pipeline's output is a data file rather than a program:
+# a scipy release that changes gaussian_filter's edge handling by a hair would
+# quietly reshape the risk surface, and nothing in the repository would show it.
+# These are the versions every number in README.md and pipeline/eval/ was
+# produced with.
+#
+#   pip install -r requirements.txt
+#
+# Nothing else is needed. The site itself has no build step and no runtime
+# dependencies beyond the vendored copy of Leaflet.
+numpy==2.4.6
+scipy==1.17.1
