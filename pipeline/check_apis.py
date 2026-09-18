@@ -35,16 +35,28 @@ try:
     from fetch_transit import FEEDS as GTFS_FEEDS
 except Exception:
     GTFS_FEEDS = {}
+try:
+    # Probe the CDE directory through the opener fetch_schools actually uses,
+    # so this check tests the fetch rather than just the host.
+    from fetch_schools import opener as cde_opener
+except Exception:
+    cde_opener = None
 
 
-def probe(name, url, check=None, method="GET", head_bytes=4096):
-    """Fetch a little of `url` and run `check` over it. Never raises."""
+def probe(name, url, check=None, method="GET", head_bytes=4096, opener=None):
+    """Fetch a little of `url` and run `check` over it. Never raises.
+
+    `opener` lets a probe go through the same machinery its fetch script uses,
+    so a green check here means that script would work rather than merely that
+    the host is up.
+    """
     t0 = time.time()
     rec = dict(name=name, url=url.split("?")[0], ok=False, detail="", ms=0)
     try:
         req = urllib.request.Request(url, method=method,
                                      headers={"User-Agent": "safe-routes-check"})
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        open_fn = opener.open if opener is not None else urllib.request.urlopen
+        with open_fn(req, timeout=TIMEOUT) as r:
             body = r.read(head_bytes) if method == "GET" else b""
             rec["status"] = r.status
             rec["ok"] = 200 <= r.status < 300
@@ -123,6 +135,7 @@ def main():
                          "workflow annotation for anything not answering")
     a = ap.parse_args()
 
+    # (name, url, checker, method[, opener])
     checks = []
 
     crime_url = C.SOCRATA_CRIME + "?" + urllib.parse.urlencode(
@@ -134,7 +147,8 @@ def main():
                   "Bureau_of_Street_Lighting/MapServer/0?f=json")
     checks.append(("Streetlights (ArcGIS)", lights_url, arcgis_layer, "GET"))
 
-    checks.append(("CDE school directory", C.CDE_SCHOOLS, tab_header, "GET"))
+    checks.append(("CDE school directory", C.CDE_SCHOOLS, tab_header, "GET",
+                   cde_opener() if cde_opener else None))
 
     for i, m in enumerate(OSM_MIRRORS):
         status = m.replace("/interpreter", "/status")
@@ -143,7 +157,7 @@ def main():
     for kind, url in GTFS_FEEDS.items():
         checks.append((f"LA Metro GTFS ({kind})", url, None, "HEAD"))
 
-    results = [probe(n, u, c, m) for n, u, c, m in checks]
+    results = [probe(*(c if len(c) > 4 else (*c, None))) for c in checks]
 
     if a.json:
         print(json.dumps(results, indent=1))
