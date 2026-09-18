@@ -135,29 +135,36 @@ def main():
                          "workflow annotation for anything not answering")
     a = ap.parse_args()
 
-    # (name, url, checker, method[, opener])
+    # Keyword args throughout: `probe` takes head_bytes before opener, so a
+    # positional list silently binds an opener to head_bytes. That shipped once
+    # and crashed the CDE probe.
     checks = []
 
     crime_url = C.SOCRATA_CRIME + "?" + urllib.parse.urlencode(
         {"$select": "dr_no,date_occ,time_occ,crm_cd_desc,premis_desc,"
                     "vict_age,lat,lon", "$limit": 1})
-    checks.append(("LAPD crime (Socrata)", crime_url, json_rows, "GET"))
+    checks.append(dict(name="LAPD crime (Socrata)", url=crime_url,
+                       check=json_rows))
 
     lights_url = ("https://maps.lacity.org/lahub/rest/services/"
                   "Bureau_of_Street_Lighting/MapServer/0?f=json")
-    checks.append(("Streetlights (ArcGIS)", lights_url, arcgis_layer, "GET"))
+    checks.append(dict(name="Streetlights (ArcGIS)", url=lights_url,
+                       check=arcgis_layer))
 
-    checks.append(("CDE school directory", C.CDE_SCHOOLS, tab_header, "GET",
-                   cde_opener() if cde_opener else None))
+    checks.append(dict(name="CDE school directory", url=C.CDE_SCHOOLS,
+                       check=tab_header,
+                       opener=cde_opener() if cde_opener else None))
 
     for i, m in enumerate(OSM_MIRRORS):
-        status = m.replace("/interpreter", "/status")
-        checks.append((f"Overpass mirror {i+1}", status, overpass_status, "GET"))
+        checks.append(dict(name=f"Overpass mirror {i+1}",
+                           url=m.replace("/interpreter", "/status"),
+                           check=overpass_status))
 
     for kind, url in GTFS_FEEDS.items():
-        checks.append((f"LA Metro GTFS ({kind})", url, None, "HEAD"))
+        checks.append(dict(name=f"LA Metro GTFS ({kind})", url=url,
+                           method="HEAD"))
 
-    results = [probe(*(c if len(c) > 4 else (*c, None))) for c in checks]
+    results = [probe(**c) for c in checks]
 
     if a.json:
         print(json.dumps(results, indent=1))
