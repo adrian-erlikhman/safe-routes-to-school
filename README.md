@@ -349,7 +349,18 @@ slipped in: [`docs/FORMAT_V3.md`](docs/FORMAT_V3.md).
 ## Running it
 
 ```bash
-pip install numpy scipy
+pip install -r requirements.txt
+```
+
+Pinned, because the output is a data file rather than a program: a scipy release
+that changes `gaussian_filter`'s edge handling by a hair would quietly reshape
+the risk surface and nothing in the repository would show it.
+
+Five public services stand between a clone and a working build. Check they are
+answering before waiting eight minutes to find out:
+
+```bash
+python pipeline/check_apis.py
 ```
 
 Fetch the source data. This pulls about 100 MB into `.cache/`, resumes if it
@@ -363,6 +374,14 @@ Build the scored graph into `data/`, then check it:
 
 ```bash
 python pipeline/build_graph.py && python pipeline/validate.py
+```
+
+Test the model against data it was not fitted on. The first of these rewrites
+`pipeline/eval/holdout_results.md`, which currently says the holdout has never
+been run:
+
+```bash
+python pipeline/eval/holdout.py && python pipeline/eval/sensitivity.py
 ```
 
 Serve it. The site is static, so anything will do:
