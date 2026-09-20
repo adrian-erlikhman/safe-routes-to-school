@@ -8,7 +8,7 @@
  *
  * Bump VERSION whenever anything in data/ changes; the old cache is dropped on
  * the next activation. */
-const VERSION = 'srs-2026-09-03';
+const VERSION = 'srs-2026-09-20';
 
 const SHELL = [
   './', 'index.html', 'app.js', 'es.js', 'manifest.webmanifest',

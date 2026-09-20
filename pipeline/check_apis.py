@@ -43,7 +43,8 @@ except Exception:
     cde_opener = None
 
 
-def probe(name, url, check=None, method="GET", head_bytes=4096, opener=None):
+def probe(name, url, check=None, method="GET", head_bytes=4096, opener=None,
+          timeout=None):
     """Fetch a little of `url` and run `check` over it. Never raises.
 
     `opener` lets a probe go through the same machinery its fetch script uses,
@@ -56,12 +57,12 @@ def probe(name, url, check=None, method="GET", head_bytes=4096, opener=None):
         req = urllib.request.Request(url, method=method,
                                      headers={"User-Agent": "safe-routes-check"})
         open_fn = opener.open if opener is not None else urllib.request.urlopen
-        with open_fn(req, timeout=TIMEOUT) as r:
+        with open_fn(req, timeout=timeout or TIMEOUT) as r:
             body = r.read(head_bytes) if method == "GET" else b""
             rec["status"] = r.status
             rec["ok"] = 200 <= r.status < 300
             if rec["ok"] and check:
-                ok, detail = check(body)
+                ok, detail = check(body, r.headers.get("content-type", ""))
                 rec["ok"], rec["detail"] = ok, detail
             elif rec["ok"]:
                 # A HEAD has no body, so report what the server declares.
@@ -77,7 +78,7 @@ def probe(name, url, check=None, method="GET", head_bytes=4096, opener=None):
         if isinstance(reason, ssl.SSLError):
             rec["detail"] += "  (TLS -- check the CA bundle if behind a proxy)"
     except (socket.timeout, TimeoutError):
-        rec["detail"] = f"timed out after {TIMEOUT}s"
+        rec["detail"] = f"timed out after {timeout or TIMEOUT}s"
     except Exception as e:                     # noqa: BLE001 -- a probe must not throw
         rec["detail"] = f"{type(e).__name__}: {e}"
     rec["ms"] = int((time.time() - t0) * 1000)
@@ -85,7 +86,7 @@ def probe(name, url, check=None, method="GET", head_bytes=4096, opener=None):
 
 
 # ------------------------------------------------------------------- checkers
-def json_rows(body):
+def json_rows(body, ctype=""):
     try:
         rows = json.loads(body.decode("utf-8", "replace"))
     except Exception:
@@ -98,17 +99,30 @@ def json_rows(body):
             "schema ok" if not missing else f"missing fields: {sorted(missing)}")
 
 
-def arcgis_layer(body):
+def arcgis_layer(body, ctype=""):
+    text = body.decode("utf-8", "replace")
     try:
-        meta = json.loads(body.decode("utf-8", "replace"))
+        meta = json.loads(text)
     except Exception:
-        return False, "response was not JSON"
+        # A prefix of a large but valid document is not a broken service. Fall
+        # back to looking for the fields a live layer always carries, so a read
+        # limit can never again be reported as an outage.
+        if '"type"' in text and "Feature Layer" in text:
+            import re as _re
+            m = _re.search(r'"name"\s*:\s*"([^"]{1,60})"', text)
+            return True, f"layer {m.group(1) if m else '?'} (response truncated)"
+        # A retired or renamed layer answers 200 with an HTML error page, which
+        # is a different problem from the 502s this service also throws, and the
+        # two need different responses -- one is waited out, one is a code fix.
+        snip = " ".join(text.split())[:110]
+        return False, (f"not JSON (content-type {ctype or 'unset'}): {snip}"
+                       if snip else f"empty body, content-type {ctype or 'unset'}")
     if "error" in meta:
         return False, str(meta["error"].get("message", meta["error"]))
     return True, f"layer {meta.get('id', '?')}: {meta.get('name', 'unnamed')}"
 
 
-def overpass_status(body):
+def overpass_status(body, ctype=""):
     text = body.decode("utf-8", "replace")
     for line in text.splitlines():
         if "slots available" in line or "Connected as" in line:
@@ -116,7 +130,7 @@ def overpass_status(body):
     return bool(text.strip()), text.splitlines()[0][:70] if text.strip() else "empty"
 
 
-def tab_header(body):
+def tab_header(body, ctype=""):
     line = body.decode("utf-8", "replace").splitlines()[:1]
     if not line:
         return False, "empty response"
@@ -149,10 +163,10 @@ def main():
     lights_url = ("https://maps.lacity.org/lahub/rest/services/"
                   "Bureau_of_Street_Lighting/MapServer/0?f=json")
     checks.append(dict(name="Streetlights (ArcGIS)", url=lights_url,
-                       check=arcgis_layer))
+                       check=arcgis_layer, head_bytes=400_000))
 
     checks.append(dict(name="CDE school directory", url=C.CDE_SCHOOLS,
-                       check=tab_header,
+                       check=tab_header, timeout=180,
                        opener=cde_opener() if cde_opener else None))
 
     for i, m in enumerate(OSM_MIRRORS):

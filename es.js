@@ -55,6 +55,12 @@ window.LANGS.es = {
     'keep.report': 'Reportar un problema con esta ruta',
     'keep.note': 'El enlace abre este mismo viaje en cualquier teléfono. La tarjeta es para un estudiante que no tiene uno: las calles, en orden, en una sola hoja.',
 
+    'open.h': 'Ábrela en otra aplicación',
+    'open.g': 'Google Maps',
+    'open.a': 'Apple Maps — ruta directa',
+    'open.w': 'Waze — en coche',
+    'open.gpx': 'Descargar GPX',
+
     'layers.h': 'Capas del mapa',
     'layers.risk': 'Riesgo',
     'layers.schools': 'Escuelas',
@@ -231,5 +237,18 @@ window.LANGS.es = {
     'pc.open': 'Abre este viaje en un teléfono',
     'pc.foot': 'Las puntuaciones van de 0 a 100 frente a todas las cuadras de Los Ángeles a esa hora; menos es más tranquilo. Es una segunda opinión sobre una caminata, no una garantía. Datos: LAPD 2020 a 2024, LA Metro, OpenStreetMap.',
     'pc.printed': 'Impreso el {date}',
+
+    'open.note': 'A Google se le envían algunos puntos de paso para que su '
+      + 'navegador siga esta ruta y no la más corta. Apple y Waze solo aceptan '
+      + 'un inicio y un final, así que elegirán su propio camino. El archivo '
+      + 'GPX es el único que lleva esta ruta exactamente como es.',
+    'open.ready': 'Se enviaron <b>{k} puntos de paso</b> a Google, que debería '
+      + 'conservar cerca del <b>{f}%</b> de esta ruta. Apple y Waze siguen '
+      + 'eligiendo la suya.',
+    'open.working': 'Calculando los puntos de paso…',
+    'intro.example': 'Esta es una caminata de ejemplo a <b>{school}</b>, evaluada '
+      + 'para la hora que es ahora, para que veas qué hace la aplicación antes de '
+      + 'escribir nada. Pon tu escuela y tu punto de partida para reemplazarla.',
+    'toast.gpx': 'GPX guardado. Ábrelo en Organic Maps, OsmAnd o Komoot.',
   },
 };
