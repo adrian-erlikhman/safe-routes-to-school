@@ -100,13 +100,21 @@ def json_rows(body, ctype=""):
 
 
 def arcgis_layer(body, ctype=""):
+    text = body.decode("utf-8", "replace")
     try:
-        meta = json.loads(body.decode("utf-8", "replace"))
+        meta = json.loads(text)
     except Exception:
+        # A prefix of a large but valid document is not a broken service. Fall
+        # back to looking for the fields a live layer always carries, so a read
+        # limit can never again be reported as an outage.
+        if '"type"' in text and "Feature Layer" in text:
+            import re as _re
+            m = _re.search(r'"name"\s*:\s*"([^"]{1,60})"', text)
+            return True, f"layer {m.group(1) if m else '?'} (response truncated)"
         # A retired or renamed layer answers 200 with an HTML error page, which
         # is a different problem from the 502s this service also throws, and the
         # two need different responses -- one is waited out, one is a code fix.
-        snip = " ".join(body.decode("utf-8", "replace").split())[:110]
+        snip = " ".join(text.split())[:110]
         return False, (f"not JSON (content-type {ctype or 'unset'}): {snip}"
                        if snip else f"empty body, content-type {ctype or 'unset'}")
     if "error" in meta:
@@ -155,7 +163,7 @@ def main():
     lights_url = ("https://maps.lacity.org/lahub/rest/services/"
                   "Bureau_of_Street_Lighting/MapServer/0?f=json")
     checks.append(dict(name="Streetlights (ArcGIS)", url=lights_url,
-                       check=arcgis_layer))
+                       check=arcgis_layer, head_bytes=400_000))
 
     checks.append(dict(name="CDE school directory", url=C.CDE_SCHOOLS,
                        check=tab_header, timeout=180,
