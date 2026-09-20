@@ -346,6 +346,33 @@ strength fitted from the data rather than chosen. The resulting per-block
 confidence does not fit the shipped binary format, so it is proposed rather than
 slipped in: [`docs/FORMAT_V3.md`](docs/FORMAT_V3.md).
 
+## Handing the route to another app
+
+Google Maps, Apple Maps and Waze will not draw a route you give them. They take
+endpoints and run their own router, so a plain "open in maps" button returns the
+shortest walk — the exact route this app exists to argue against. Over 19 random
+school trips that costs **+350% exposure on average, +5,628% at worst**.
+
+Google accepts ordered waypoints, so its router can be pulled back onto ours.
+Picking them is the real problem and it is not a formula: evenly spaced points
+are non-monotonic, and three of them can land exactly where the shortest path
+already goes. Greedy works — hand off, find the point our route strays furthest
+from what came back, pin it, repeat:
+
+| waypoints | route retained | exposure vs ours |
+|---|---|---|
+| 0 | 59.8% | +26.8% |
+| 1 | 73.8% | +11.9% |
+| 3 | 87.8% | +8.8% |
+| 5 | 99.1% | +0.5% |
+
+Median across those trips: 4 waypoints, 96% retained, +3.0% exposure.
+
+Apple's URL scheme has no waypoint parameter. Waze has neither waypoints nor a
+walking mode. Both get the direct route and both buttons say so. **GPX is the
+only format that carries the route exactly** — Organic Maps, OsmAnd and Komoot
+all import it.
+
 ## Running it
 
 ```bash

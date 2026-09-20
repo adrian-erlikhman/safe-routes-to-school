@@ -1,5 +1,43 @@
 # Changelog
 
+## Dark theme, a first run, and handing the route to a map app (September 2026)
+
+- **New theme.** The warm cream ground is gone. A quiet block on a near-black
+  ground can fall almost to the background while a bad one glows, which is a
+  contrast range cream could not give — the old map read as a brown smear at
+  city zoom. The risk scale is now one hue with stepped lightness rather than
+  green→amber→red: risk is a magnitude, and a rainbow ramp invents category
+  boundaries the data does not have. Both ramps were checked for monotone
+  lightness, step separation and contrast against the ground rather than picked
+  by eye. The route line is cool on purpose — nothing on the risk scale is
+  cool, so the chosen route can never be read as a risk value.
+- **It opens on a finished walk.** The site used to open on a three-step
+  instruction list and two empty fields, so the first thing a visitor had to do
+  was homework. It now computes an example route on load, scored for the hour it
+  actually is, and says plainly that it is an example.
+- **Open it somewhere else.** Google Maps, Apple Maps, Waze and GPX.
+
+  None of those apps will draw a route you hand them — they take endpoints and
+  run their own router. Sent origin and destination alone, Google returns the
+  shortest walk, which is the exact route this app exists to talk you out of:
+  measured over 19 random school trips that costs **+350% exposure on average
+  and +5,628% at worst**. Google does accept ordered waypoints, so its router
+  can be pulled onto our path, but choosing them is not a formula — evenly
+  spaced points are non-monotonic, and three of them can land exactly where the
+  shortest path already goes. Picking sharp corners plateaus around 66% of the
+  route.
+
+  What works is greedy: hand off, find the point our route strays furthest
+  from what came back, pin that, repeat. Median **4 waypoints, 96% of the route
+  retained, +3.0% exposure**.
+
+  Apple's URL scheme has no waypoint parameter and Waze has neither waypoints
+  nor a walking mode, so both get the direct route and the buttons say so.
+  GPX is the only format that carries the route exactly; Organic Maps, OsmAnd
+  and Komoot all import it.
+- Service worker cache bumped, so a returning visitor cannot get the old theme
+  against the new code.
+
 ## Validation (September 2026)
 
 The model had never been tested against data it had not been fitted on. This
